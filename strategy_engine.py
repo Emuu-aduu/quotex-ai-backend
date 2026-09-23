@@ -16,12 +16,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 class StrategyEngine:
     def __init__(self, min_score_threshold: int = 7, spread_penalty_weight: float = 0.1):
-        """
-        75% Confirmation Rule: 9টি মোট কনফার্মেশন পয়েন্টের মধ্যে অন্তত ৭টি (7/9 = 77.7%)
-        একই দিকে (BUY/SELL) মিললে তবেই সিগন্যাল ট্রিগার হবে।
-        """
         self.min_score_threshold = min_score_threshold
-        # Magic number সরিয়ে Config / Default fallback এ সেট করা হলো
         self.spread_penalty_weight = getattr(settings, "SPREAD_PENALTY_WEIGHT", spread_penalty_weight)
         
         self.market_pairs = [
@@ -32,14 +27,9 @@ class StrategyEngine:
         ]
 
     def _is_otc(self, symbol: str) -> bool:
-        """OTC মার্কেট ফিল্টার"""
         return "OTC" in symbol.upper()
 
     def _check_wick_and_stability(self, df: pd.DataFrame) -> bool:
-        """
-        Wick/Shadow & Doji Block (Fake Shadow Filter)
-        ক্যান্ডেলের Wick যদি Body-এর চেয়ে ২ গুণের বেশি বড় হয় তবে ব্লক করবে।
-        """
         if df.empty:
             return False
 
@@ -54,7 +44,6 @@ class StrategyEngine:
         lower_wick = min(open_p, close_p) - low_p
         max_wick = max(upper_wick, lower_wick)
 
-        # Doji or Wick >= 2x Body
         if body_size == 0 or max_wick >= (2 * body_size):
             return False
         return True
@@ -67,29 +56,24 @@ class StrategyEngine:
         is_news_time: bool = False
     ) -> Dict[str, Any]:
         """
-        Evaluates 75% Confirmation Rules (7/9 Threshold), OTC Drop, Fake Shadows, & Market Stability.
+        রিয়েল-টাইম ক্যান্ডেল ডেটা এনালাইসিস করে ৭৫% কনফার্মেশন রুল অনুযায়ী সিগন্যাল তৈরি করে।
         """
-        # ১. OTC ফিল্টারিং
         if self._is_otc(symbol):
             return {"symbol": symbol, "status": "REJECTED", "reason": "OTC Market Blocked"}
 
-        # ২. মিনিমাম ডাটা চেক
         if df.empty or len(df) < 30:
             return {"symbol": symbol, "status": "REJECTED", "reason": "Insufficient Candle Data"}
 
-        # ৩. স্প্রেড ও নিউজ ফিল্টার (Spread > 3.0 pips / News Time)
         if spread_pips > 3.0:
             return {"symbol": symbol, "status": "REJECTED", "reason": f"High Spread ({spread_pips} pips > 3.0)"}
         
         if is_news_time:
             return {"symbol": symbol, "status": "REJECTED", "reason": "High-Impact News Block"}
 
-        # ৪. ক্যান্ডেল উইক ও ডোজি ফিল্টার (Fake Shadow Check)
         latest = df.iloc[-1]
         if latest.get('is_fake_shadow', False) or not self._check_wick_and_stability(df):
             return {"symbol": symbol, "status": "REJECTED", "reason": "High Volatility / Fake Shadow Wick Block"}
 
-        # ৫. IndicatorEngine থেকে ইন্ডিকেটর ও SMC কনফার্মেশন গণনা
         buy_score = 0
         sell_score = 0
         total_rules = 9
@@ -103,9 +87,6 @@ class StrategyEngine:
             buy_score = int(latest.get('buy_score', 0))
             sell_score = int(latest.get('sell_score', 0))
 
-        # ----------------------------------------------------
-        # ৬. ৭৫% কনফার্মেশন ডিসিশন (৭/৯ পয়েন্ট)
-        # ----------------------------------------------------
         if buy_score >= self.min_score_threshold:
             confidence = round((buy_score / total_rules) * 100, 1)
             return {
@@ -137,30 +118,44 @@ class StrategyEngine:
                 "confidence": 0.0
             }
 
-    def select_best_2_markets(self, scanned_markets: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Scans all market results and filters out top 2 most stable signals."""
-        if not scanned_markets:
-            return []
+    def scan_best_stable_market(self, live_data_fetcher=None) -> Dict[str, Any]:
+        """
+        রিয়েল-টাইম মার্কেট স্ক্যানার: নিজে থেকে সমস্ত পেয়ার লুপ করে সেরা স্টেবল মার্কেট ও সিগন্যাল খুঁজে বের করবে।
+        """
+        scanned_results = []
 
-        valid_signals = [m for m in scanned_markets if isinstance(m, dict) and m.get('status') == "SIGNAL"]
-        if not valid_signals:
-            return []
+        for symbol in self.market_pairs:
+            if self._is_otc(symbol):
+                continue
+            
+            df = pd.DataFrame()
+            if live_data_fetcher and callable(live_data_fetcher):
+                try:
+                    # লাইভ ডেটা প্রোভাইডার থেকে ক্যান্ডেল ডেটা ফেচ করা
+                    df = live_data_fetcher(symbol)
+                except Exception as e:
+                    logging.error(f"Error fetching data for {symbol}: {e}")
+                    continue
 
-        sorted_signals = sorted(valid_signals, key=lambda x: x.get('stability_rank', 0), reverse=True)
-        return sorted_signals[:2]
+            # যদি লাইভ ডেটা পাওয়া যায়, তবে ইঞ্জিন নিজে থেকেই এনালাইসিস রান করবে
+            if not df.empty:
+                result = self.evaluate_market_signal(df, symbol=symbol)
+                if result.get("status") == "SIGNAL":
+                    scanned_results.append(result)
 
-    def scan_best_stable_market(self) -> Dict[str, Any]:
-        """On-Demand API Call Handler - Test Mode"""
+        # যদি একাধিক সিগন্যাল পাওয়া যায়, তবে সেরা স্টেবল সিগন্যালটি সিলেক্ট করবে
+        if scanned_results:
+            sorted_signals = sorted(scanned_results, key=lambda x: x.get('stability_rank', 0), reverse=True)
+            return sorted_signals[0]
+
         return {
-            "symbol": "EUR/USD",
-            "status": "SIGNAL",
-            "action": "CALL",
-            "direction": "UP",
-            "score": "8/9",
-            "confidence": 88.9,
-            "stability_rank": 8.0
+            "symbol": "NONE",
+            "status": "NO_SIGNAL",
+            "action": "HOLD",
+            "reason": "Scanning live markets... No 75%+ stable setups found right now.",
+            "confidence": 0.0
         }
 
 if __name__ == "__main__":
     engine = StrategyEngine()
-    print("--- Strategy Engine 75% Rules & Indicator Engine Connected Successfully ---")
+    print("--- Real-Time Autonomous Strategy Engine Ready ---")
