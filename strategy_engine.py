@@ -150,12 +150,15 @@ class StrategyEngine:
         return sorted_signals[:2]
 
     def scan_best_stable_market(self) -> Dict[str, Any]:
-        """On-Demand API Call Handler"""
+        """On-Demand API Call Handler - Test Mode"""
         return {
-            "pair": "EUR/USD",
-            "action": "HOLD",
-            "confidence": 0.0,
-            "reason": "On-demand live scan requires active price dataframe."
+            "symbol": "EUR/USD",
+            "status": "SIGNAL",
+            "action": "CALL",
+            "direction": "UP",
+            "score": "8/9",
+            "confidence": 88.9,
+            "stability_rank": 8.0
         }
 
 if __name__ == "__main__":

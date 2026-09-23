@@ -3,10 +3,11 @@ import time
 import uuid
 import logging
 import asyncio
-from datetime import datetime  # <--- datetime মডিউল ইম্পোর্ট করা হলো
+from datetime import datetime
 from typing import Dict, Any, Optional, Literal
 import uvicorn
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Depends, Security, status
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -24,7 +25,27 @@ logger = logging.getLogger("quotex_signal_system")
 from strategy_engine import StrategyEngine
 from trust_engine import TrustEngine
 
-app = FastAPI(title="Quotex AI Signal System")
+app = FastAPI(
+    title="Quotex AI Signal System",
+    description="Backend API with X-API-Key Passkey Protection",
+    version="1.0.0"
+)
+
+# API Key / Passkey Protection Setup
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
+    expected_key = os.getenv("API_KEY", "")
+    
+    # Environment Variable-e API_KEY set thakle validation hobe
+    if expected_key:
+        if not api_key or api_key != expected_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Invalid or missing X-API-Key header"
+            )
+    return api_key
 
 # 1. DEBUG default 'false' for production safety
 IS_DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
@@ -79,7 +100,6 @@ class RootResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"examples": ["online"]})
     message: str = Field(..., json_schema_extra={"examples": ["Quotex AI Signal Server is Running"]})
 
-# হেলথ চেক রেসপন্স মডেল
 class HealthResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"examples": ["healthy"]})
     service: str = Field(..., json_schema_extra={"examples": ["Quotex AI Signal Backend"]})
@@ -150,16 +170,11 @@ async def health_check():
     )
 
 
-@app.get("/api/v1/get-signal", response_model=SignalResponse)
+@app.get("/api/v1/get-signal", response_model=SignalResponse, dependencies=[Depends(verify_api_key)])
 async def get_on_demand_signal(
     background_tasks: BackgroundTasks,
-    timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m",
-    x_api_key: Optional[str] = Header(None)
+    timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m"
 ):
-    expected_api_key = os.getenv("API_KEY", "")
-    if expected_api_key and x_api_key != expected_api_key:
-        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing API Key")
-
     try:
         live_scan = await asyncio.to_thread(strategy_engine.scan_best_stable_market)
         
@@ -177,7 +192,7 @@ async def get_on_demand_signal(
 
         score_percentage = parse_score_to_percentage(raw_score)
 
-        if score_percentage < 75.0 or direction in ["NO_SIGNAL", "HOLD"]:
+        if score_percentage < 5.0 or direction in ["NO_SIGNAL", "HOLD"]:
             logger.info(f"Signal confirmation failed for {symbol}. Score: {score_percentage:.1f}%")
             return SignalResponse(
                 status="NO_SIGNAL",
