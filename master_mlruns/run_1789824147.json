@@ -1,0 +1,15 @@
+{
+  "run_id": "run_1789824147",
+  "run_name": "Train_EURUSD",
+  "experiment_name": "AEmuu_Trading_MLOps",
+  "timestamp": 1789824147.5147521,
+  "params": {
+    "model": "RandomForest_Classifier",
+    "n_estimators": 100,
+    "max_depth": 6
+  },
+  "metrics": {
+    "accuracy": 0.885,
+    "win_rate": 0.72
+  }
+}

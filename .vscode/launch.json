@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter Web (Port 3000)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}/my_frontend",
+      "args": [
+        "-d",
+        "chrome",
+        "--web-port",
+        "3000"
+      ]
+    }
+  ]
+}
