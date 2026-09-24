@@ -38,5 +38,13 @@
     "direction": "DOWN",
     "score": "8/9",
     "hash": "988fcdc8193b89a40d3b4e9c9e80dc50959685daec91b6c575045d01666e7d4e"
+  },
+  {
+    "id": "SIG-1790241588-5BA6",
+    "timestamp": "2026-09-24 09:19:48",
+    "asset": "AUDUSD",
+    "direction": "DOWN",
+    "score": "8/9",
+    "hash": "835958349e2282fa2151fd88cbf722e77f5584f4aa470ed1947b311dbef08ba7"
   }
 ]
