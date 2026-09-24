@@ -14,5 +14,13 @@
     "direction": "DOWN",
     "score": "8/9",
     "hash": "ea366339a882e90af8c8f4de4dc8e9786d8c58b91c8c23ae840476dd4db3c07a"
+  },
+  {
+    "id": "SIG-1790241523-356A",
+    "timestamp": "2026-09-24 09:18:43",
+    "asset": "GBPUSD",
+    "direction": "DOWN",
+    "score": "8/9",
+    "hash": "7383e2466389a25d858a07da984aa275db38da52dbd4f733674d2853b1e0594c"
   }
 ]
