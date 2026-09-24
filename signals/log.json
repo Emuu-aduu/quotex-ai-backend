@@ -94,5 +94,45 @@
     "direction": "DOWN",
     "score": "8/9",
     "hash": "72966bbe7a2a4a1b2ee5f8246a3b5ec3807d2f9a3ffc0dd5aecc2bfcf608eb01"
+  },
+  {
+    "id": "SIG-1790243572-BE05",
+    "timestamp": "2026-09-24 09:52:52",
+    "asset": "EURUSD",
+    "direction": "UP",
+    "score": "8/10",
+    "hash": "e40d757d31c149caf15b8a2bc593275a3166b151a43b523a8c5fa721d669d568"
+  },
+  {
+    "id": "SIG-1790243647-4715",
+    "timestamp": "2026-09-24 09:54:07",
+    "asset": "EURGBP",
+    "direction": "DOWN",
+    "score": "8/10",
+    "hash": "432ba2f3476c775d1ec9e57c3df22122394423b844e680621734eafd13aacb0e"
+  },
+  {
+    "id": "SIG-1790243698-EDD2",
+    "timestamp": "2026-09-24 09:54:58",
+    "asset": "GBPUSD",
+    "direction": "UP",
+    "score": "8/10",
+    "hash": "130e30433d29620d7f26decfc980ac4c5705da988d45b830ba46de661386965e"
+  },
+  {
+    "id": "SIG-1790243741-F4A6",
+    "timestamp": "2026-09-24 09:55:41",
+    "asset": "EURUSD",
+    "direction": "DOWN",
+    "score": "8/10",
+    "hash": "b0889d260e2a16b9a8d46d109b037de84b966d43e818ea5e080d3b3f97cd0fd9"
+  },
+  {
+    "id": "SIG-1790243879-FF5F",
+    "timestamp": "2026-09-24 09:57:59",
+    "asset": "EURGBP",
+    "direction": "DOWN",
+    "score": "8/10",
+    "hash": "361d023608ff05a2aa9a35854b44d02a2d1c4f98129499b9bf8b54bbee280d2b"
   }
 ]
