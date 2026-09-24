@@ -182,5 +182,13 @@
     "direction": "DOWN",
     "score": "8/10",
     "hash": "ac75ead3a0230ee86318f757ca925cb7c9295a91689ef2bce97c6d3823fe81f0"
+  },
+  {
+    "id": "SIG-1790244684-3A3B",
+    "timestamp": "2026-09-24 10:11:24",
+    "asset": "EURUSD",
+    "direction": "DOWN",
+    "score": "10/10",
+    "hash": "b50f42616a4e54f00e941eb85eb9e5687274054ebf96ca4901bd07c09cdc8dd8"
   }
 ]
