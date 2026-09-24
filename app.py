@@ -156,4 +156,7 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER)
+    
+    # Render-এর জন্য ডাইনামিক পোর্ট এবং ওয়েব সার্ভার কনফিগারেশন
+    port = int(os.environ.get("PORT", 10000))
+    ft.app(target=main, view=None, port=port, host="0.0.0.0")
