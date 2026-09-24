@@ -174,5 +174,13 @@
     "direction": "UP",
     "score": "8/10",
     "hash": "66f020ce367d75579432a2bdca96dee4206c2ef97899918626d73afe794d9298"
+  },
+  {
+    "id": "SIG-1790244676-D68C",
+    "timestamp": "2026-09-24 10:11:16",
+    "asset": "USDJPY",
+    "direction": "DOWN",
+    "score": "8/10",
+    "hash": "ac75ead3a0230ee86318f757ca925cb7c9295a91689ef2bce97c6d3823fe81f0"
   }
 ]
