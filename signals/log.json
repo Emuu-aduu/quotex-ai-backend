@@ -134,5 +134,13 @@
     "direction": "DOWN",
     "score": "8/10",
     "hash": "361d023608ff05a2aa9a35854b44d02a2d1c4f98129499b9bf8b54bbee280d2b"
+  },
+  {
+    "id": "SIG-1790244624-3424",
+    "timestamp": "2026-09-24 10:10:24",
+    "asset": "EURGBP",
+    "direction": "UP",
+    "score": "6/10",
+    "hash": "82e58b2ecf6b31fc9b81ef531c2b6aedbf21fc58f811c632be77b408e3a7161b"
   }
 ]
