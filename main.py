@@ -176,7 +176,8 @@ async def get_on_demand_signal(
     timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m"
 ):
     try:
-        live_scan = await asyncio.to_thread(strategy_engine.scan_best_stable_market)
+        # FIXED: Directly await the async method instead of using asyncio.to_thread
+        live_scan = await strategy_engine.scan_best_stable_market()
         
         if not live_scan or live_scan.get("action") == "HOLD" or live_scan.get("status") != "SIGNAL":
             reason_msg = live_scan.get("reason", "50%+ confirmation pawa jayni") if live_scan else "No market data found"
