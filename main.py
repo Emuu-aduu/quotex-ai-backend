@@ -90,11 +90,10 @@ if not all([GITHUB_TOKEN, REPO_OWNER, REPO_NAME]):
 
 strategy_engine = StrategyEngine()
 trust_engine = TrustEngine(
-    github_token=GITHUB_TOKEN,
-    repo_owner=REPO_OWNER,
-    repo_name=REPO_NAME
+    github_token=os.getenv("GITHUB_TOKEN", ""),
+    repo_owner="Emuu-aduu",
+    repo_name="quotex-ai-backend"
 )
-
 # Pydantic Schemas
 class RootResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"examples": ["online"]})
