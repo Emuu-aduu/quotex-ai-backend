@@ -179,7 +179,7 @@ async def get_on_demand_signal(
         live_scan = await asyncio.to_thread(strategy_engine.scan_best_stable_market)
         
         if not live_scan or live_scan.get("action") == "HOLD" or live_scan.get("status") != "SIGNAL":
-            reason_msg = live_scan.get("reason", "75%+ confirmation pawa jayni") if live_scan else "No market data found"
+            reason_msg = live_scan.get("reason", "50%+ confirmation pawa jayni") if live_scan else "No market data found"
             return SignalResponse(
                 status="NO_SIGNAL",
                 timeframe=timeframe,
@@ -192,12 +192,12 @@ async def get_on_demand_signal(
 
         score_percentage = parse_score_to_percentage(raw_score)
 
-        if score_percentage < 5.0 or direction in ["NO_SIGNAL", "HOLD"]:
+        if score_percentage < 50.0 or direction in ["NO_SIGNAL", "HOLD"]:
             logger.info(f"Signal confirmation failed for {symbol}. Score: {score_percentage:.1f}%")
             return SignalResponse(
                 status="NO_SIGNAL",
                 timeframe=timeframe,
-                message=f"75%+ confirmation pawa jayni (Current Score: {raw_score} / {score_percentage:.1f}%)"
+                message=f"50%+ confirmation pawa jayni (Current Score: {raw_score} / {score_percentage:.1f}%)"
             )
 
         signal_id = f"SIG-{int(time.time())}-{uuid.uuid4().hex[:4].upper()}"

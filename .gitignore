@@ -1,7 +1,11 @@
+# Environment variables / Secrets
 .env
+
+# Python Virtual Environment
 venv/
+env/
 __pycache__/
-*.pyc
-build/
-dist/
-.flet/
+
+# Logs & System Files
+*.log
+.DS_Store
