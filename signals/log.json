@@ -110,5 +110,13 @@
     "direction": "DOWN",
     "score": "8/10",
     "hash": "432ba2f3476c775d1ec9e57c3df22122394423b844e680621734eafd13aacb0e"
+  },
+  {
+    "id": "SIG-1790243698-EDD2",
+    "timestamp": "2026-09-24 09:54:58",
+    "asset": "GBPUSD",
+    "direction": "UP",
+    "score": "8/10",
+    "hash": "130e30433d29620d7f26decfc980ac4c5705da988d45b830ba46de661386965e"
   }
 ]
