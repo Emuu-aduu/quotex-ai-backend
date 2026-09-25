@@ -5,7 +5,6 @@ import time
 import flet as ft
 import pandas as pd
 import yfinance as yf
-import pandas_ta as ta
 
 # Version Compatibility Layer (Flet 0.23 vs 0.28+)
 Colors = getattr(ft, "Colors", getattr(ft, "colors", None))
@@ -85,7 +84,7 @@ def main(page: ft.Page):
 
     all_assets = list(live_forex_mapping.keys()) + otc_assets
 
-    # Advanced Confluence Signal Generation Logic with Auto-Reconnect
+    # Advanced Confluence Signal Generation Logic with Auto-Reconnect & Pure Pandas Indicators
     def fetch_signal(e):
         loading_ring.visible = True
         fetch_btn.disabled = True
@@ -93,7 +92,7 @@ def main(page: ft.Page):
         status_text.color = Colors.YELLOW_ACCENT
         page.update()
 
-        time.sleep(0.5) # Initial short delay
+        time.sleep(0.5)
 
         try:
             selected_asset = random.choice(all_assets)
@@ -133,37 +132,47 @@ def main(page: ft.Page):
                             success = False
 
                 if success:
-                    # MultiIndex column fix if returned by yfinance
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.get_level_values(0)
                     
-                    # Calculate Indicators
-                    rsi = ta.rsi(df['Close'], length=14)
-                    stoch = ta.stoch(df['High'], df['Low'], df['Close'], k=14, d=3, smooth_k=3)
-                    bbands = ta.bbands(df['Close'], length=20, std=2)
-                    macd = ta.macd(df['Close'], fast=12, slow=26, signal=9)
-                    
-                    # Extract latest values safely
+                    close = df['Close']
+                    high = df['High']
+                    low = df['Low']
+
+                    # 1. RSI (14) Calculation using Pure Pandas
+                    delta = close.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    rsi = 100 - (100 / (1 + rs))
                     latest_rsi = rsi.iloc[-1] if not rsi.empty else 50.0
-                    
-                    k_col = [c for c in stoch.columns if 'STOCHk' in c or 'k_' in c.lower()][0] if not stoch.empty else None
-                    d_col = [c for c in stoch.columns if 'STOCHd' in c or 'd_' in c.lower()][0] if not stoch.empty else None
-                    latest_k = stoch[k_col].iloc[-1] if k_col else 50.0
-                    latest_d = stoch[d_col].iloc[-1] if d_col else 50.0
-                    
-                    bbl_col = [c for c in bbands.columns if 'BBL' in c][0] if not bbands.empty else None
-                    bbu_col = [c for c in bbands.columns if 'BBU' in c][0] if not bbands.empty else None
-                    latest_close = df['Close'].iloc[-1]
-                    latest_bbl = bbands[bbl_col].iloc[-1] if bbl_col else latest_close
-                    latest_bbu = bbands[bbu_col].iloc[-1] if bbu_col else latest_close
-                    
-                    macd_col = [c for c in macd.columns if c.startswith('MACD_') or c == 'MACD'][0] if not macd.empty else None
-                    macds_col = [c for c in macd.columns if c.startswith('MACDs') or c == 'MACDs'][0] if not macd.empty else None
-                    macdh_col = [c for c in macd.columns if c.startswith('MACDh') or c == 'MACDh'][0] if not macd.empty else None
-                    
-                    latest_macd = macd[macd_col].iloc[-1] if macd_col else 0.0
-                    latest_macds = macd[macds_col].iloc[-1] if macds_col else 0.0
-                    latest_macdh = macd[macdh_col].iloc[-1] if macdh_col else 0.0
+
+                    # 2. Stochastic (14, 3, 3) Calculation
+                    low_min = low.rolling(window=14).min()
+                    high_max = high.rolling(window=14).max()
+                    k_line = 100 * ((close - low_min) / (high_max - low_min))
+                    d_line = k_line.rolling(window=3).mean()
+                    latest_k = k_line.iloc[-1] if not k_line.empty else 50.0
+                    latest_d = d_line.iloc[-1] if not d_line.empty else 50.0
+
+                    # 3. Bollinger Bands (20, 2) Calculation
+                    sma = close.rolling(window=20).mean()
+                    std = close.rolling(window=20).std()
+                    bbl = sma - (2 * std)
+                    bbu = sma + (2 * std)
+                    latest_close = close.iloc[-1]
+                    latest_bbl = bbl.iloc[-1] if not bbl.empty else latest_close
+                    latest_bbu = bbu.iloc[-1] if not bbu.empty else latest_close
+
+                    # 4. MACD (12, 26, 9) Calculation
+                    ema12 = close.ewm(span=12, adjust=False).mean()
+                    ema26 = close.ewm(span=26, adjust=False).mean()
+                    macd_line = ema12 - ema26
+                    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+                    histogram = macd_line - signal_line
+                    latest_macd = macd_line.iloc[-1] if not macd_line.empty else 0.0
+                    latest_macds = signal_line.iloc[-1] if not signal_line.empty else 0.0
+                    latest_macdh = histogram.iloc[-1] if not histogram.empty else 0.0
 
                     # --- UP SIGNAL CONDITIONS (4 Criteria) ---
                     up_cond1 = latest_rsi < 35
@@ -207,7 +216,6 @@ def main(page: ft.Page):
                         percentage = "--"
                         score_info = "No Trade (Market Unclear)"
                 else:
-                    # Final Fallback after 3 failed retries
                     direction = random.choice(["UP", "DOWN"])
                     percentage = "88.0%"
                     score_info = "Fallback Mode (3 Tries Failed)"
@@ -296,6 +304,5 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     
-    # Render Dynamic Port and Web Server Configuration
     port = int(os.environ.get("PORT", 10000))
     ft.app(target=main, view=None, port=port, host="0.0.0.0")
