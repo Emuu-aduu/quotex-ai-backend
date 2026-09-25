@@ -1,10 +1,4 @@
-Fastapi==0.110.0
-uvicorn
-pydantic==2.6.4
-pydantic-core==2.16.3
-python-dotenv
 pandas
-requests
 yfinance
 pandas-ta
 flet==0.23.2
