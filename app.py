@@ -63,7 +63,61 @@ def main(page: ft.Page):
             current_time = time.time()
             random.seed(int(current_time * 1000) % 100000)
 
-            assets = ["EUR/USD (OTC)", "GBP/USD (OTC)", "AUD/USD (OTC)", "USD/JPY (OTC)", "EUR/JPY (OTC)", "Crypto IDX"]
+            assets = [
+                # --- Live Forex Pairs (20) ---
+                "EUR/USD",
+                "GBP/USD",
+                "AUD/USD",
+                "USD/JPY",
+                "EUR/JPY",
+                "EUR/GBP",
+                "GBP/JPY",
+                "AUD/JPY",
+                "EUR/AUD",
+                "GBP/AUD",
+                "USD/CAD",
+                "USD/CHF",
+                "NZD/USD",
+                "EUR/CAD",
+                "GBP/CAD",
+                "AUD/CAD",
+                "NZD/JPY",
+                "CAD/JPY",
+                "CHF/JPY",
+                "AUD/NZD",
+                
+                # --- OTC Pairs (30) ---
+                "CHF/JPY (OTC)",
+                "EUR/AUD (OTC)",
+                "EUR/CAD (OTC)",
+                "NZD/CAD (OTC)",
+                "USD/CHF (OTC)",
+                "USD/INR (OTC)",
+                "USD/NGN (OTC)",
+                "USD/ZAR (OTC)",
+                "GBP/USD (OTC)",
+                "CAD/JPY (OTC)",
+                "GBP/CAD (OTC)",
+                "AUD/NZD (OTC)",
+                "AUD/JPY (OTC)",
+                "GBP/CHF (OTC)",
+                "GBP/NZD (OTC)",
+                "USD/PHP (OTC)",
+                "NZD/USD (OTC)",
+                "USD/PKR (OTC)",
+                "NZD/JPY (OTC)",
+                "EUR/NZD (OTC)",
+                "USD/JPY (OTC)",
+                "AUD/USD (OTC)",
+                "EUR/JPY (OTC)",
+                "USD/CAD (OTC)",
+                "CAD/CHF (OTC)",
+                "GBP/AUD (OTC)",
+                "USD/EGP (OTC)",
+                "USD/MXN (OTC)",
+                "USD/ARS (OTC)",
+                "USD/BRL (OTC)"
+            ]
             selected_asset = random.choice(assets)
             
             direction = random.choice(["UP", "DOWN"])
