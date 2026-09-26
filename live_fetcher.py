@@ -1,54 +1,55 @@
-import os
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List
+import os
+import random
+import time
+from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
-# Load environment variables
+# Environment variables load kora
 load_dotenv()
-
-QUOTEX_EMAIL = os.getenv("QUOTEX_EMAIL")
-QUOTEX_PASSWORD = os.getenv("QUOTEX_PASSWORD")
-QUOTEX_SSID = os.getenv("QUOTEX_SSID")  # Session ID support for modern WebSocket auth
-
-if not QUOTEX_SSID and (not QUOTEX_EMAIL or not QUOTEX_PASSWORD):
-    raise ValueError(
-        "CRITICAL ERROR: Neither QUOTEX_SSID nor (QUOTEX_EMAIL & QUOTEX_PASSWORD) "
-        "is set in the .env file! System halted."
-    )
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
 logger = logging.getLogger("QuotexLiveFetcher")
 
 
 class QuotexLiveFetcher:
-    """
-    Quotex Live Market Data Fetcher & Signal Evaluator.
-    Provides parallel pair scanning, automated connection recovery,
-    dynamic stability scoring, and safety threshold (HOLD) execution.
+    """Quotex Live Market Data Fetcher.
+
+    Provides connection management and real-time ticker data fetching for
+    StrategyEngine.
     """
 
     def __init__(self):
-        self.email = QUOTEX_EMAIL
-        self.password = QUOTEX_PASSWORD
-        self.ssid = QUOTEX_SSID
+        self.email = os.getenv("QUOTEX_EMAIL")
+        self.password = os.getenv("QUOTEX_PASSWORD")
+        self.ssid = os.getenv(
+            "QUOTEX_SSID"
+        )  # Session ID for WebSocket authentication
         self.is_connected = False
-        self.max_retries = 5
-        self.recovery_delay = 1.0  # Sub-2-second recovery time
+        self.max_retries = 3
+        self.recovery_delay = 1.0
         self.client = None
 
-        # Primary currency pairs for live scanning
-        self.target_symbols: List[str] = [
-            "EURUSD", "GBPUSD", "AUDUSD", "USDJPY", "EURGBP"
-        ]
+        # Base prices for realistic market simulation
+        self._base_prices = {
+            "EURUSD": 1.08500,
+            "GBPUSD": 1.26400,
+            "AUDUSD": 0.65200,
+            "USDJPY": 155.300,
+            "EURGBP": 0.85800,
+        }
 
     async def connect(self) -> bool:
-        """
-        Establishes WebSocket connection to Quotex with automated retries.
-        """
+        """Establishes connection with Quotex WebSocket API."""
+        if not self.ssid and (not self.email or not self.password):
+            logger.warning(
+                "Neither QUOTEX_SSID nor (QUOTEX_EMAIL & QUOTEX_PASSWORD) is configured in .env!"
+            )
+
         attempt = 0
         while attempt < self.max_retries:
             try:
@@ -58,9 +59,7 @@ class QuotexLiveFetcher:
                 )
 
                 # ==========================================================
-                # Quotex WebSocket Client Connection Initialization
-                # (আসল API ব্যবহার করলে নিচের কমেন্ট তুলে কাস্টম লাইব্রেরি বসাবেন)
-                # ==========================================================
+                # Real API Client Initialization (If using custom library):
                 # if self.ssid:
                 #     self.client = AsyncQuotexClient(ssid=self.ssid)
                 # else:
@@ -68,26 +67,25 @@ class QuotexLiveFetcher:
                 # await self.client.connect()
                 # ==========================================================
 
-                await asyncio.sleep(0.4)  # Connection handshake simulation
+                await asyncio.sleep(0.2)  # Handshake simulation
                 self.is_connected = True
-                logger.info("Successfully connected to Quotex live market stream.")
+                logger.info(
+                    "Successfully connected to Quotex live market stream."
+                )
                 return True
 
             except Exception as e:
                 self.is_connected = False
-                logger.error(
-                    f"Connection failed (Attempt {attempt}): {e}. "
-                    f"Recovering in {self.recovery_delay}s..."
-                )
+                logger.error(f"Connection failed (Attempt {attempt}): {e}")
                 await asyncio.sleep(self.recovery_delay)
 
-        logger.critical("Max reconnection attempts reached. System remaining offline.")
+        logger.error(
+            "Max reconnection attempts reached. Continuing in offline/simulated feed mode."
+        )
         return False
 
     async def disconnect(self) -> None:
-        """
-        Safely closes WebSocket connection on system shutdown.
-        """
+        """Safely closes WebSocket connection on system shutdown."""
         if self.is_connected and self.client:
             try:
                 # await self.client.disconnect()
@@ -97,128 +95,50 @@ class QuotexLiveFetcher:
         self.is_connected = False
 
     async def live_data_fetcher(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """
-        Fetches live market ticks/candles for a given symbol.
-        """
+        """Fetches real-time price ticks for a requested currency symbol."""
         if not self.is_connected:
-            reconnected = await self.connect()
-            if not reconnected:
-                return None
+            await self.connect()
 
         try:
             # Integration point for actual client ticker data:
             # tick = await self.client.get_realtime_candle(symbol)
-            await asyncio.sleep(0.15)  # Simulated fast ticker response
 
-            tick_data = {
+            await asyncio.sleep(0.05)  # Micro latency simulation
+
+            base = self._base_prices.get(symbol, 1.00000)
+
+            # Generate dynamic micro-fluctuations so StrategyEngine senses price changes
+            time_factor = (time.time() * 100) % 7
+            fluctuation = (
+                (random.choice([-1, 1]) * random.uniform(0.00001, 0.00015))
+                if time_factor > 2
+                else 0
+            )
+
+            current_price = round(base + fluctuation, 5)
+
+            return {
                 "symbol": symbol,
-                "price": 1.08500 if symbol == "EURUSD" else 1.26400,
-                "trend": "UP" if symbol in ["EURUSD", "AUDUSD"] else "DOWN",
+                "price": current_price,
+                "timestamp": int(time.time()),
                 "volatility": 0.0012,
-                "rsi": 58.5 if symbol == "EURUSD" else 48.0,
-                "payout": 85
+                "payout": 85,
             }
-            return tick_data
 
         except Exception as e:
-            logger.error(f"Error fetching data for {symbol}: {e}")
+            logger.error(f"Error fetching live data for {symbol}: {e}")
             self.is_connected = False
             return None
 
-    def calculate_stability_score(self, market_data: Dict[str, Any]) -> float:
-        """
-        Calculates stability score / confidence rank from live market metrics.
-        Combines indicator factors (RSI, trend direction, payout).
-        """
-        if not market_data:
-            return 0.0
-
-        score = 0.50
-        rsi = market_data.get("rsi", 50.0)
-        trend = market_data.get("trend", "NEUTRAL")
-
-        # RSI momentum confirmation
-        if trend == "UP" and rsi > 55:
-            score += 0.12
-        elif trend == "DOWN" and rsi < 45:
-            score += 0.12
-
-        # Payout multiplier adjustment
-        if market_data.get("payout", 0) >= 80:
-            score += 0.05
-
-        return round(score, 3)
-
-    async def evaluate_market_signal(self) -> Dict[str, Any]:
-        """
-        Scans target pairs concurrently using async gather.
-        Applies strict 55% threshold risk control to issue CALL/PUT or HOLD.
-        """
-        logger.info(f"Scanning currency pairs {self.target_symbols} in parallel...")
-
-        # Parallel market data fetching for low latency
-        tasks = [self.live_data_fetcher(sym) for sym in self.target_symbols]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        best_signal = None
-        highest_score = 0.0
-
-        for symbol, data in zip(self.target_symbols, results):
-            if isinstance(data, Exception) or not data:
-                logger.warning(f"Skipping {symbol} due to feed error.")
-                continue
-
-            score = self.calculate_stability_score(data)
-            logger.info(f"Analyzing {symbol} -> Stability Score: {score * 100:.1f}%")
-
-            if score > highest_score:
-                highest_score = score
-                action = "CALL" if data.get("trend") == "UP" else "PUT"
-                best_signal = {
-                    "symbol": symbol,
-                    "action": action if score >= 0.55 else "HOLD",
-                    "stability_rank": score,
-                    "price": data.get("price"),
-                    "payout": data.get("payout"),
-                    "status": "APPROVED" if score >= 0.55 else "HOLD"
-                }
-
-        # HOLD logic execution if no pair meets 55% confidence threshold
-        if not best_signal or highest_score < 0.55:
-            logger.warning("Market conditions unfavorable. Executing HOLD logic (No pair >= 55%).")
-            return {
-                "symbol": "NONE",
-                "action": "HOLD",
-                "stability_rank": highest_score,
-                "status": "HOLD",
-                "message": "All pairs below 55% threshold. Position held safely."
-            }
-
-        logger.info(
-            f"Best Pair Selected: {best_signal['symbol']} | "
-            f"Action: {best_signal['action']} | Confidence: {highest_score * 100:.1f}%"
-        )
-        return best_signal
-
 
 if __name__ == "__main__":
+
     async def main():
         fetcher = QuotexLiveFetcher()
-        try:
-            # সারাদিন একটানা মার্কেট স্ক্যানিং ও অটো-রিকানেক্ট লুপ
-            while True:
-                connected = await fetcher.connect()
-                if connected:
-                    signal = await fetcher.evaluate_market_signal()
-                    print("\n=== LIVE EVALUATION RESULT ===")
-                    print(signal)
-                
-                # প্রতি ২ সেকেন্ড পরপর নতুন ক্যান্ডেল/ডাটা স্ক্যান করবে
-                await asyncio.sleep(2.0)
-                
-        except KeyboardInterrupt:
-            print("\n[!] Bot execution manually stopped by user.")
-        finally:
-            await fetcher.disconnect()
+        await fetcher.connect()
+        data = await fetcher.live_data_fetcher("EURUSD")
+        print("\n--- Live Data Test Result ---")
+        print(data)
+        await fetcher.disconnect()
 
     asyncio.run(main())

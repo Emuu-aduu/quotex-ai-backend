@@ -10,8 +10,10 @@ import yfinance as yf
 Colors = getattr(ft, "Colors", getattr(ft, "colors", None))
 Icons = getattr(ft, "Icons", getattr(ft, "icons", None))
 
+
 def main(page: ft.Page):
-    page.title = "Quotex AI Signal System"
+    # Web App Name
+    page.title = "AEmuu"
     page.theme_mode = ft.ThemeMode.DARK
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
@@ -22,9 +24,25 @@ def main(page: ft.Page):
         "Quotex AI Signal (Auto-Reconnect Pro)",
         size=26,
         weight=ft.FontWeight.BOLD,
-        color=Colors.CYAN_ACCENT
+        color=Colors.CYAN_ACCENT,
     )
-    
+
+    # API Signal Status Indicator Icon & Text
+    api_status_icon = ft.Icon(
+        Icons.CELLULAR_4_BAR, color=Colors.GREEN_ACCENT_400, size=18
+    )
+    api_status_text = ft.Text(
+        "API Status: Online",
+        size=13,
+        color=Colors.GREEN_ACCENT_400,
+        weight=ft.FontWeight.W_500,
+    )
+    api_status_row = ft.Row(
+        [api_status_icon, api_status_text],
+        alignment=ft.MainAxisAlignment.CENTER,
+        spacing=5,
+    )
+
     # Timeframe Dropdown
     timeframe_dropdown = ft.Dropdown(
         width=160,
@@ -42,11 +60,15 @@ def main(page: ft.Page):
 
     # UI Display Labels
     asset_text = ft.Text("Asset: --", size=18, weight=ft.FontWeight.BOLD)
-    direction_text = ft.Text("Direction: --", size=22, weight=ft.FontWeight.BOLD)
+    direction_text = ft.Text(
+        "Direction: --", size=22, weight=ft.FontWeight.BOLD
+    )
     score_text = ft.Text("Indicator: --", size=16)
     percentage_text = ft.Text("Accuracy: --", size=16)
-    status_text = ft.Text("Press 'Fetch Signal' to scan market", size=13, color=Colors.GREY_400)
-    
+    status_text = ft.Text(
+        "Press 'Fetch Signal' to scan market", size=13, color=Colors.GREY_400
+    )
+
     loading_ring = ft.ProgressRing(visible=False)
 
     # Asset Lists Mapping (Only Live Forex)
@@ -70,17 +92,23 @@ def main(page: ft.Page):
         "NZD/JPY": "NZDJPY=X",
         "CAD/JPY": "CADJPY=X",
         "CHF/JPY": "CHFJPY=X",
-        "AUD/NZD": "AUDNZD=X"
+        "AUD/NZD": "AUDNZD=X",
     }
 
     all_assets = list(live_forex_mapping.keys())
 
-    # Advanced Confluence Signal Generation Logic with Auto-Reconnect & Pure Pandas Indicators
+    # Signal Generation Logic
     def fetch_signal(e):
         loading_ring.visible = True
         fetch_btn.disabled = True
         status_text.value = "Scanning Multi-Indicator Confluence..."
         status_text.color = Colors.YELLOW_ACCENT
+
+        # Checking Connection Status
+        api_status_icon.name = Icons.CELLULAR_4_BAR
+        api_status_icon.color = Colors.YELLOW_ACCENT
+        api_status_text.value = "API Status: Checking Connection..."
+        api_status_text.color = Colors.YELLOW_ACCENT
         page.update()
 
         time.sleep(0.5)
@@ -92,7 +120,6 @@ def main(page: ft.Page):
             score_info = ""
             percentage = "--"
 
-            # --- LIVE FOREX: Real Confluence Analysis with Auto-Reconnect (3 Tries) ---
             ticker = live_forex_mapping.get(selected_asset, "EURUSD=X")
             max_retries = 3
             success = False
@@ -104,8 +131,10 @@ def main(page: ft.Page):
                     status_text.color = Colors.YELLOW_ACCENT
                     page.update()
 
-                    df = yf.download(ticker, period="1d", interval="1m", progress=False)
-                    
+                    df = yf.download(
+                        ticker, period="1d", interval="1m", progress=False
+                    )
+
                     if not df.empty and len(df) > 30:
                         success = True
                         break
@@ -121,22 +150,27 @@ def main(page: ft.Page):
                         success = False
 
             if success:
+                api_status_icon.name = Icons.CHECK_CIRCLE_ROUNDED
+                api_status_icon.color = Colors.GREEN_ACCENT_400
+                api_status_text.value = "API Status: Connected & Live"
+                api_status_text.color = Colors.GREEN_ACCENT_400
+
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
-                
-                close = df['Close']
-                high = df['High']
-                low = df['Low']
 
-                # 1. RSI (14) Calculation using Pure Pandas
+                close = df["Close"]
+                high = df["High"]
+                low = df["Low"]
+
+                # 1. RSI (14)
                 delta = close.diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                gain = delta.where(delta > 0, 0).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                 rs = gain / loss
                 rsi = 100 - (100 / (1 + rs))
                 latest_rsi = rsi.iloc[-1] if not rsi.empty else 50.0
 
-                # 2. Stochastic (14, 3, 3) Calculation
+                # 2. Stochastic (14, 3, 3)
                 low_min = low.rolling(window=14).min()
                 high_max = high.rolling(window=14).max()
                 k_line = 100 * ((close - low_min) / (high_max - low_min))
@@ -144,7 +178,7 @@ def main(page: ft.Page):
                 latest_k = k_line.iloc[-1] if not k_line.empty else 50.0
                 latest_d = d_line.iloc[-1] if not d_line.empty else 50.0
 
-                # 3. Bollinger Bands (20, 2) Calculation
+                # 3. Bollinger Bands (20, 2)
                 sma = close.rolling(window=20).mean()
                 std = close.rolling(window=20).std()
                 bbl = sma - (2 * std)
@@ -153,33 +187,40 @@ def main(page: ft.Page):
                 latest_bbl = bbl.iloc[-1] if not bbl.empty else latest_close
                 latest_bbu = bbu.iloc[-1] if not bbu.empty else latest_close
 
-                # 4. MACD (12, 26, 9) Calculation
+                # 4. MACD (12, 26, 9)
                 ema12 = close.ewm(span=12, adjust=False).mean()
                 ema26 = close.ewm(span=26, adjust=False).mean()
                 macd_line = ema12 - ema26
                 signal_line = macd_line.ewm(span=9, adjust=False).mean()
                 histogram = macd_line - signal_line
-                latest_macd = macd_line.iloc[-1] if not macd_line.empty else 0.0
-                latest_macds = signal_line.iloc[-1] if not signal_line.empty else 0.0
-                latest_macdh = histogram.iloc[-1] if not histogram.empty else 0.0
+                latest_macd = (
+                    macd_line.iloc[-1] if not macd_line.empty else 0.0
+                )
+                latest_macds = (
+                    signal_line.iloc[-1] if not signal_line.empty else 0.0
+                )
+                latest_macdh = (
+                    histogram.iloc[-1] if not histogram.empty else 0.0
+                )
 
-                # --- UP SIGNAL CONDITIONS (4 Criteria) ---
+                # --- UP SIGNAL CONDITIONS ---
                 up_cond1 = latest_rsi < 35
                 up_cond2 = (latest_k < 20) and (latest_k > latest_d)
                 up_cond3 = latest_close <= latest_bbl
                 up_cond4 = (latest_macd > latest_macds) and (latest_macdh > 0)
-                
+
                 up_matches = sum([up_cond1, up_cond2, up_cond3, up_cond4])
 
-                # --- DOWN SIGNAL CONDITIONS (4 Criteria) ---
+                # --- DOWN SIGNAL CONDITIONS ---
                 down_cond1 = latest_rsi > 65
                 down_cond2 = (latest_k > 80) and (latest_k < latest_d)
                 down_cond3 = latest_close >= latest_bbu
                 down_cond4 = (latest_macd < latest_macds) and (latest_macdh < 0)
-                
-                down_matches = sum([down_cond1, down_cond2, down_cond3, down_cond4])
 
-                # Decision making based on matches
+                down_matches = sum(
+                    [down_cond1, down_cond2, down_cond3, down_cond4]
+                )
+
                 if up_matches >= down_matches and up_matches >= 2:
                     direction = "UP"
                     matches = up_matches
@@ -190,7 +231,6 @@ def main(page: ft.Page):
                     direction = "NO TRADE"
                     matches = 0
 
-                # Accuracy Assignment
                 if matches == 4:
                     percentage = "96.0%"
                     score_info = "Confluence: 4/4 Match"
@@ -205,14 +245,20 @@ def main(page: ft.Page):
                     percentage = "--"
                     score_info = "No Trade (Market Unclear)"
             else:
+                api_status_icon.name = (
+                    Icons.SIGNAL_CELLULAR_CONNECTED_NO_INTERNET_4_BAR
+                )
+                api_status_icon.color = Colors.RED_ACCENT_400
+                api_status_text.value = "API Status: Offline / Rate Limited"
+                api_status_text.color = Colors.RED_ACCENT_400
+
                 direction = random.choice(["UP", "DOWN"])
                 percentage = "88.0%"
                 score_info = "Fallback Mode (3 Tries Failed)"
 
-            # Update UI labels
             asset_text.value = f"Asset: {selected_asset}"
             direction_text.value = f"Direction: {direction}"
-            
+
             if direction == "UP":
                 direction_text.color = Colors.GREEN_ACCENT_400
             elif direction == "DOWN":
@@ -226,6 +272,11 @@ def main(page: ft.Page):
             status_text.color = Colors.GREEN_400
 
         except Exception as err:
+            api_status_icon.name = Icons.ERROR_ROUNDED
+            api_status_icon.color = Colors.RED_ACCENT_400
+            api_status_text.value = "API Status: Crashed / Error"
+            api_status_text.color = Colors.RED_ACCENT_400
+
             status_text.value = f"Generation Error: {str(err)}"
             status_text.color = Colors.RED_ACCENT
 
@@ -234,7 +285,7 @@ def main(page: ft.Page):
             fetch_btn.disabled = False
             page.update()
 
-    # Signal Card UI
+    # UI Components
     signal_card = ft.Card(
         content=ft.Container(
             content=ft.Column(
@@ -256,7 +307,6 @@ def main(page: ft.Page):
         elevation=6,
     )
 
-    # Button
     fetch_btn = ft.ElevatedButton(
         "FETCH SIGNAL",
         icon=Icons.BOLT_ROUNDED,
@@ -266,23 +316,26 @@ def main(page: ft.Page):
             bgcolor=Colors.CYAN_ACCENT,
         ),
         width=200,
-        height=45
+        height=45,
     )
 
-    # Layout Setup
     page.add(
         title_text,
+        api_status_row,
         ft.Divider(),
         timeframe_dropdown,
         ft.Container(height=10),
         signal_card,
         ft.Container(height=10),
         loading_ring,
-        fetch_btn
+        fetch_btn,
     )
 
+
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
     port = int(os.environ.get("PORT", 10000))
     ft.app(target=main, view=None, port=port, host="0.0.0.0")

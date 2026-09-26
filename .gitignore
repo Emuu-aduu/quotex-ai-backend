@@ -4,6 +4,7 @@
 # Python Virtual Environment
 venv/
 env/
+ven/
 __pycache__/
 
 # Logs & System Files

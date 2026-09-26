@@ -1,16 +1,16 @@
-import os
-import time
-import uuid
-import logging
 import asyncio
 from datetime import datetime
-from typing import Dict, Any, Optional, Literal
-import uvicorn
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Depends, Security, status
-from fastapi.security import APIKeyHeader
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+import logging
+import os
+import time
+from typing import Any, Dict, Literal, Optional
+import uuid
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Security, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel, Field
+import uvicorn
 
 # .env file load kora
 load_dotenv()
@@ -35,22 +35,31 @@ app = FastAPI(
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
+
 async def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
     expected_key = os.getenv("API_KEY", "")
-    
-    # Environment Variable-e API_KEY set thakle validation hobe
-    if expected_key:
-        if not api_key or api_key != expected_key:
+
+    # Strictly require API_KEY in production or valid matching key
+    if not expected_key:
+        if not IS_DEBUG:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: Invalid or missing X-API-Key header"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server configuration error: API_KEY is not set"
             )
+        return api_key
+
+    if not api_key or api_key != expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Invalid or missing X-API-Key header"
+        )
     return api_key
+
 
 # 1. DEBUG default 'false' for production safety
 IS_DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
 
-# 2. CORS Setup with Empty ALLOWED_ORIGINS safety fallback
+# 2. CORS Setup
 if IS_DEBUG:
     app.add_middleware(
         CORSMiddleware,
@@ -62,8 +71,7 @@ if IS_DEBUG:
 else:
     raw_origins = os.getenv("ALLOWED_ORIGINS", "")
     allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
-    
-    # Safe fallback if ALLOWED_ORIGINS is accidentally left empty in production
+
     if not allowed_origins:
         logger.warning("WARNING: ALLOWED_ORIGINS is empty in production! Defaulting to strict secure restrictions.")
         allowed_origins = []
@@ -76,7 +84,7 @@ else:
         allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     )
 
-# ENV Validation: Production e token missing thakle app start hobei na
+# ENV Validation
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 REPO_OWNER = os.getenv("REPO_OWNER", "")
 REPO_NAME = os.getenv("REPO_NAME", "")
@@ -89,20 +97,22 @@ if not all([GITHUB_TOKEN, REPO_OWNER, REPO_NAME]):
         logger.warning(error_msg)
 
 strategy_engine = StrategyEngine()
-trust_engine = TrustEngine(
-    github_token=os.getenv("GITHUB_TOKEN", ""),
-    repo_owner="Emuu-aduu",
-    repo_name="quotex-ai-backend"
-)
+
+# Trust Engine initialization with ENV variables
+trust_engine = TrustEngine(github_token=GITHUB_TOKEN, repo_owner=REPO_OWNER, repo_name=REPO_NAME)
+
+
 # Pydantic Schemas
 class RootResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"examples": ["online"]})
     message: str = Field(..., json_schema_extra={"examples": ["Quotex AI Signal Server is Running"]})
 
+
 class HealthResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"examples": ["healthy"]})
     service: str = Field(..., json_schema_extra={"examples": ["Quotex AI Signal Backend"]})
     timestamp: str = Field(..., json_schema_extra={"examples": ["2026-09-22 22:55:00"]})
+
 
 class SignalResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"examples": ["SUCCESS"]})
@@ -122,7 +132,7 @@ def parse_score_to_percentage(score_val: Any) -> float:
     try:
         if isinstance(score_val, (int, float)):
             return float(score_val)
-        
+
         if isinstance(score_val, str) and "/" in score_val:
             parts = score_val.split("/")
             if len(parts) == 2:
@@ -154,10 +164,7 @@ async def async_github_commit(signal_data: Dict[str, Any], signal_hash: str):
 
 @app.get("/", response_model=RootResponse)
 def root():
-    return RootResponse(
-        status="online",
-        message="Quotex AI Signal Server is Running"
-    )
+    return RootResponse(status="online", message="Quotex AI Signal Server is Running")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["Health Check"])
@@ -175,16 +182,11 @@ async def get_on_demand_signal(
     timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m"
 ):
     try:
-        # FIXED: Directly await the async method instead of using asyncio.to_thread
         live_scan = await strategy_engine.scan_best_stable_market()
-        
+
         if not live_scan or live_scan.get("action") == "HOLD" or live_scan.get("status") != "SIGNAL":
             reason_msg = live_scan.get("reason", "50%+ confirmation pawa jayni") if live_scan else "No market data found"
-            return SignalResponse(
-                status="NO_SIGNAL",
-                timeframe=timeframe,
-                message=reason_msg
-            )
+            return SignalResponse(status="NO_SIGNAL", timeframe=timeframe, message=reason_msg)
 
         symbol = live_scan.get("symbol") or live_scan.get("pair") or "EUR/USD"
         raw_score = live_scan.get("score", "0/9")
@@ -237,4 +239,5 @@ async def get_on_demand_signal(
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=IS_DEBUG)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=IS_DEBUG)
