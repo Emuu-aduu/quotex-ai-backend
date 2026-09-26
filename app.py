@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import os
 import random
 import time
 import flet as ft
 import pandas as pd
-import yfinance as yf
+from quotexpy import Quotex
 
 # Version Compatibility Layer (Flet 0.23 vs 0.28+)
 Colors = getattr(ft, "Colors", getattr(ft, "colors", None))
@@ -71,34 +72,29 @@ def main(page: ft.Page):
 
     loading_ring = ft.ProgressRing(visible=False)
 
-    # Asset Lists Mapping (Only Live Forex)
-    live_forex_mapping = {
-        "EUR/USD": "EURUSD=X",
-        "GBP/USD": "GBPUSD=X",
-        "AUD/USD": "AUDUSD=X",
-        "USD/JPY": "USDJPY=X",
-        "EUR/JPY": "EURJPY=X",
-        "EUR/GBP": "EURGBP=X",
-        "GBP/JPY": "GBPJPY=X",
-        "AUD/JPY": "AUDJPY=X",
-        "EUR/AUD": "EURAUD=X",
-        "GBP/AUD": "GBPAUD=X",
-        "USD/CAD": "USDCAD=X",
-        "USD/CHF": "USDCHF=X",
-        "NZD/USD": "NZDUSD=X",
-        "EUR/CAD": "EURCAD=X",
-        "GBP/CAD": "GBPCAD=X",
-        "AUD/CAD": "AUDCAD=X",
-        "NZD/JPY": "NZDJPY=X",
-        "CAD/JPY": "CADJPY=X",
-        "CHF/JPY": "CHFJPY=X",
-        "AUD/NZD": "AUDNZD=X",
+    # Asset Lists Mapping (Quotex Live & OTC Assets)
+    quotex_assets_mapping = {
+        "EUR/USD": "EURUSD",
+        "GBP/USD": "GBPUSD",
+        "AUD/USD": "AUDUSD",
+        "USD/JPY": "USDJPY",
+        "EUR/JPY": "EURJPY",
+        "EUR/GBP": "EURGBP",
+        "GBP/JPY": "GBPJPY",
+        "AUD/JPY": "AUDJPY",
+        "USD/CAD": "USDCAD",
+        "USD/CHF": "USDCHF",
+        "EUR/USD (OTC)": "EURUSD_otc",
+        "GBP/USD (OTC)": "GBPUSD_otc",
+        "USD/JPY (OTC)": "USDJPY_otc",
+        "AUD/USD (OTC)": "AUDUSD_otc",
+        "NZD/USD (OTC)": "NZDUSD_otc",
     }
 
-    all_assets = list(live_forex_mapping.keys())
+    all_assets = list(quotex_assets_mapping.keys())
 
-    # Signal Generation Logic
-    def fetch_signal(e):
+    # Signal Generation Logic (Async for QuotexPy)
+    async def fetch_signal(e):
         loading_ring.visible = True
         fetch_btn.disabled = True
         status_text.value = "Scanning Multi-Indicator Confluence..."
@@ -107,56 +103,85 @@ def main(page: ft.Page):
         # Checking Connection Status
         api_status_icon.name = Icons.SIGNAL_CELLULAR_4_BAR
         api_status_icon.color = Colors.YELLOW_ACCENT
-        api_status_text.value = "API Status: Checking Connection..."
+        api_status_text.value = "API Status: Connecting to Quotex..."
         api_status_text.color = Colors.YELLOW_ACCENT
         page.update()
 
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
 
         try:
             selected_asset = random.choice(all_assets)
+            symbol = quotex_assets_mapping.get(selected_asset, "EURUSD")
+
+            # Timeframe Conversion to Seconds
+            tf_seconds_map = {
+                "1m": 60,
+                "5m": 300,
+                "10m": 600,
+                "15m": 900,
+                "30m": 1800,
+                "1hr": 3600,
+            }
+            tf_seconds = tf_seconds_map.get(timeframe_dropdown.value, 60)
 
             direction = "NO TRADE"
             score_info = ""
             percentage = "--"
 
-            ticker = live_forex_mapping.get(selected_asset, "EURUSD=X")
             max_retries = 3
             success = False
             df = pd.DataFrame()
 
+            email = os.getenv("QUOTEX_EMAIL", "")
+            password = os.getenv("QUOTEX_PASSWORD", "")
+
             for attempt in range(1, max_retries + 1):
                 try:
-                    status_text.value = f"Fetching market data (Attempt {attempt}/{max_retries})..."
+                    status_text.value = f"Fetching Quotex data (Attempt {attempt}/{max_retries})..."
                     status_text.color = Colors.YELLOW_ACCENT
                     page.update()
 
-                    df = yf.download(
-                        ticker, period="1d", interval="1m", progress=False
-                    )
+                    # QuotexPy Client Connection
+                    client = Quotex(email=email, password=password)
+                    check, reason = await client.connect()
 
-                    if not df.empty and len(df) > 30:
-                        success = True
-                        break
+                    if check:
+                        candles = await client.get_candles(symbol, tf_seconds)
+                        client.close()
+
+                        if candles and len(candles) > 30:
+                            df = pd.DataFrame(candles)
+                            df.rename(
+                                columns={
+                                    "o": "Open",
+                                    "h": "High",
+                                    "l": "Low",
+                                    "c": "Close",
+                                    "v": "Volume",
+                                },
+                                inplace=True,
+                            )
+                            success = True
+                            break
+                        else:
+                            raise Exception("Insufficient live data received")
                     else:
-                        raise Exception("Insufficient live data")
-                except Exception:
+                        raise Exception(f"Connection failed: {reason}")
+
+                except Exception as conn_err:
                     if attempt < max_retries:
                         status_text.value = f"Reconnecting {attempt}/{max_retries}... (Waiting 2s)"
                         status_text.color = Colors.ORANGE_ACCENT
                         page.update()
-                        time.sleep(2)
+                        await asyncio.sleep(2)
                     else:
                         success = False
 
-            if success:
+            if success and not df.empty:
                 api_status_icon.name = Icons.CHECK_CIRCLE_ROUNDED
                 api_status_icon.color = Colors.GREEN_ACCENT_400
                 api_status_text.value = "API Status: Connected & Live"
                 api_status_text.color = Colors.GREEN_ACCENT_400
-
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
 
                 close = df["Close"]
                 high = df["High"]
@@ -259,7 +284,7 @@ def main(page: ft.Page):
             asset_text.value = f"Asset: {selected_asset}"
             direction_text.value = f"Direction: {direction}"
 
-            if direction == "UP":
+            if direction =="UP":
                 direction_text.color = Colors.GREEN_ACCENT_400
             elif direction == "DOWN":
                 direction_text.color = Colors.RED_ACCENT_400

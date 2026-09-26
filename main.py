@@ -88,6 +88,8 @@ else:
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 REPO_OWNER = os.getenv("REPO_OWNER", "")
 REPO_NAME = os.getenv("REPO_NAME", "")
+QUOTEX_EMAIL = os.getenv("QUOTEX_EMAIL", "")
+QUOTEX_PASSWORD = os.getenv("QUOTEX_PASSWORD", "")
 
 if not all([GITHUB_TOKEN, REPO_OWNER, REPO_NAME]):
     error_msg = "Critical Error: GitHub configurations are missing in environment variables!"
@@ -95,6 +97,9 @@ if not all([GITHUB_TOKEN, REPO_OWNER, REPO_NAME]):
         raise RuntimeError(error_msg)
     else:
         logger.warning(error_msg)
+
+if not all([QUOTEX_EMAIL, QUOTEX_PASSWORD]):
+    logger.warning("WARNING: QUOTEX_EMAIL or QUOTEX_PASSWORD is not set in environment variables.")
 
 strategy_engine = StrategyEngine()
 
@@ -185,7 +190,8 @@ async def get_on_demand_signal(
     timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m"
 ):
     try:
-        live_scan = await strategy_engine.scan_best_stable_market()
+        # Pass timeframe parameter to strategy engine
+        live_scan = await strategy_engine.scan_best_stable_market(timeframe=timeframe)
 
         if not live_scan or live_scan.get("action") == "HOLD" or live_scan.get("status") != "SIGNAL":
             reason_msg = live_scan.get("reason", "50%+ confirmation pawa jayni") if live_scan else "No market data found"
