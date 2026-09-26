@@ -25,6 +25,9 @@ logger = logging.getLogger("quotex_signal_system")
 from strategy_engine import StrategyEngine
 from trust_engine import TrustEngine
 
+# 1. DEBUG flag definition moved up for dependency functions
+IS_DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
+
 app = FastAPI(
     title="Quotex AI Signal System",
     description="Backend API with X-API-Key Passkey Protection",
@@ -55,9 +58,6 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
         )
     return api_key
 
-
-# 1. DEBUG default 'false' for production safety
-IS_DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
 
 # 2. CORS Setup
 if IS_DEBUG:
@@ -133,12 +133,15 @@ def parse_score_to_percentage(score_val: Any) -> float:
         if isinstance(score_val, (int, float)):
             return float(score_val)
 
-        if isinstance(score_val, str) and "/" in score_val:
-            parts = score_val.split("/")
-            if len(parts) == 2:
-                num, den = float(parts[0]), float(parts[1])
-                if den > 0:
-                    return (num / den) * 100.0
+        if isinstance(score_val, str):
+            if "/" in score_val:
+                parts = score_val.split("/")
+                if len(parts) == 2:
+                    num, den = float(parts[0]), float(parts[1])
+                    if den > 0:
+                        return (num / den) * 100.0
+            else:
+                return float(score_val)
     except (ValueError, TypeError, ZeroDivisionError) as err:
         logger.warning(f"Score parsing failed for value '{score_val}': {err}")
     except Exception as err:

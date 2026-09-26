@@ -29,7 +29,7 @@ def main(page: ft.Page):
 
     # API Signal Status Indicator Icon & Text
     api_status_icon = ft.Icon(
-        Icons.CELLULAR_4_BAR, color=Colors.GREEN_ACCENT_400, size=18
+        Icons.SIGNAL_CELLULAR_4_BAR, color=Colors.GREEN_ACCENT_400, size=18
     )
     api_status_text = ft.Text(
         "API Status: Online",
@@ -105,7 +105,7 @@ def main(page: ft.Page):
         status_text.color = Colors.YELLOW_ACCENT
 
         # Checking Connection Status
-        api_status_icon.name = Icons.CELLULAR_4_BAR
+        api_status_icon.name = Icons.SIGNAL_CELLULAR_4_BAR
         api_status_icon.color = Colors.YELLOW_ACCENT
         api_status_text.value = "API Status: Checking Connection..."
         api_status_text.color = Colors.YELLOW_ACCENT
