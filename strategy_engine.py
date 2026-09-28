@@ -16,7 +16,7 @@ logger = logging.getLogger("StrategyEngine")
 class StrategyEngine:
 
     def __init__(
-        self, min_score_threshold: int = 6, spread_penalty_weight: float = 0.1
+        self, min_score_threshold: int = 7, spread_penalty_weight: float = 0.1
     ):
         self.min_score_threshold = min_score_threshold
         self.spread_penalty_weight = spread_penalty_weight
@@ -146,7 +146,7 @@ class StrategyEngine:
                 "score": "0/10",
                 "confidence": 0.0,
                 "stability_rank": 0,
-                "reason": "50%+ confirmation pawa jayni",
+                "reason": "65%+ confirmation pawa jayni",
             }
 
         return best_signal

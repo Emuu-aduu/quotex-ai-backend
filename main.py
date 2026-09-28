@@ -24,6 +24,7 @@ logger = logging.getLogger("quotex_signal_system")
 
 from strategy_engine import StrategyEngine
 from trust_engine import TrustEngine
+from live_fetcher import live_fetcher  # live_fetcher import kora holo connection check-er jonno
 
 # 1. DEBUG flag definition moved up for dependency functions
 IS_DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
@@ -130,7 +131,7 @@ class SignalResponse(BaseModel):
     timestamp: Optional[str] = Field(None, json_schema_extra={"examples": ["2026-09-21 18:47:00"]})
     hash: Optional[str] = Field(None, json_schema_extra={"examples": ["a1b2c3d4..."]})
     github_status: Optional[str] = Field(None, json_schema_extra={"examples": ["QUEUED"]})
-    message: Optional[str] = Field(None, json_schema_extra={"examples": ["75%+ confirmation pawa jayni"]})
+    message: Optional[str] = Field(None, json_schema_extra={"examples": ["65%+ confirmation pawa jayni"]})
 
 
 def parse_score_to_percentage(score_val: Any) -> float:
@@ -190,11 +191,18 @@ async def get_on_demand_signal(
     timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m"
 ):
     try:
+        # API connection check
+        if not getattr(live_fetcher, 'is_connected', True):
+            raise HTTPException(
+                status_code=503, 
+                detail="API DISCONNECTED"
+            )
+
         # Pass timeframe parameter to strategy engine
         live_scan = await strategy_engine.scan_best_stable_market(timeframe=timeframe)
 
         if not live_scan or live_scan.get("action") == "HOLD" or live_scan.get("status") != "SIGNAL":
-            reason_msg = live_scan.get("reason", "50%+ confirmation pawa jayni") if live_scan else "No market data found"
+            reason_msg = live_scan.get("reason", "65%+ confirmation pawa jayni") if live_scan else "No market data found"
             return SignalResponse(status="NO_SIGNAL", timeframe=timeframe, message=reason_msg)
 
         symbol = live_scan.get("symbol") or live_scan.get("pair") or "EUR/USD"
@@ -203,12 +211,12 @@ async def get_on_demand_signal(
 
         score_percentage = parse_score_to_percentage(raw_score)
 
-        if score_percentage < 50.0 or direction in ["NO_SIGNAL", "HOLD"]:
+        if score_percentage < 65.0 or direction in ["NO_SIGNAL", "HOLD"]:
             logger.info(f"Signal confirmation failed for {symbol}. Score: {score_percentage:.1f}%")
             return SignalResponse(
                 status="NO_SIGNAL",
                 timeframe=timeframe,
-                message=f"50%+ confirmation pawa jayni (Current Score: {raw_score} / {score_percentage:.1f}%)"
+                message=f"65%+ confirmation pawa jayni (Current Score: {raw_score} / {score_percentage:.1f}%)"
             )
 
         signal_id = f"SIG-{int(time.time())}-{uuid.uuid4().hex[:4].upper()}"
