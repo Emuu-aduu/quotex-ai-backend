@@ -1,8 +1,8 @@
-fastapi
-uvicorn
-pandas
-requests
-python-dotenv
-pydantic
-quotexpy
-flet==0.23.2
+fastapi==0.110.0
+uvicorn==0.29.0
+pandas==2.2.2
+requests==2.31.0
+python-dotenv==1.0.1
+pydantic==2.6.4
+quotexpy==0.1.5
+python-multipart==0.0.9
