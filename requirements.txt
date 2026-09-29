@@ -6,4 +6,4 @@ python-dotenv==1.0.1
 pydantic==2.6.4
 quotexpy==1.40.7
 python-multipart==0.0.9
-git+https://github.com/twopirllc/pandas-ta.git
+ta==0.10.2

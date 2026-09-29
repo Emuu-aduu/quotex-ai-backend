@@ -4,7 +4,7 @@ import random
 import time
 from typing import Any, Dict, List, Optional
 import pandas as pd
-import pandas_ta as ta
+import ta
 
 from live_fetcher import QuotexLiveFetcher
 
