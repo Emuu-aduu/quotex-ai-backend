@@ -1,16 +1,17 @@
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime
 import logging
 import os
 import time
 from typing import Any, Dict, Literal, Optional
 import uuid
+
 from dotenv import load_dotenv
 from fastapi import (
     BackgroundTasks,
     Depends,
     FastAPI,
-    Header,
     HTTPException,
     Security,
     status,
@@ -20,12 +21,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 import uvicorn
 
-from live_fetcher import LiveFetcher
-live_fetcher = LiveFetcher()
-from strategy_engine import StrategyEngine
-from trust_engine import TrustEngine
-
-# Load environment variables
+# 1. Environment Variables - Always load FIRST
 load_dotenv()
 
 # Structured Logger Setup
@@ -35,15 +31,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger("quotex_signal_system")
 
+# Custom Module Imports
+from live_fetcher import LiveFetcher
+from strategy_engine import StrategyEngine
+from trust_engine import TrustEngine
+
+# Global Environment Variables
 IS_DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+REPO_OWNER = os.getenv("REPO_OWNER", "")
+REPO_NAME = os.getenv("REPO_NAME", "")
+QUOTEX_EMAIL = os.getenv("QUOTEX_EMAIL", "")
+QUOTEX_PASSWORD = os.getenv("QUOTEX_PASSWORD", "")
+
+# Safe Singleton Initialization (Prevents Server Crash if Fetcher Fails initially)
+try:
+    live_fetcher = LiveFetcher()
+except Exception as init_err:
+    logger.error(f"LiveFetcher initialization error: {init_err}")
+    live_fetcher = None
+
+strategy_engine = StrategyEngine(fetcher=live_fetcher)
+trust_engine = TrustEngine(
+    github_token=GITHUB_TOKEN, repo_owner=REPO_OWNER, repo_name=REPO_NAME
+)
+
+
+# FastAPI Lifespan Context Manager (Modern Startup & Shutdown Handling)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting Quotex AI Signal System Backend...")
+
+    # Validate mandatory environment variables
+    if not all([GITHUB_TOKEN, REPO_OWNER, REPO_NAME]):
+        err_msg = "Critical Error: GitHub configurations are missing in environment variables!"
+        if not IS_DEBUG:
+            logger.critical(err_msg)
+        else:
+            logger.warning(err_msg)
+
+    if not all([QUOTEX_EMAIL, QUOTEX_PASSWORD]):
+        logger.warning(
+            "WARNING: QUOTEX_EMAIL or QUOTEX_PASSWORD is not set in environment variables."
+        )
+
+    yield
+
+    logger.info("Shutting down Quotex AI Signal System Backend...")
+    # Clean up connections if applicable
+    if live_fetcher and hasattr(live_fetcher, "close"):
+        try:
+            if asyncio.iscoroutinefunction(live_fetcher.close):
+                await live_fetcher.close()
+            else:
+                live_fetcher.close()
+        except Exception as close_err:
+            logger.warning(f"Error during LiveFetcher closure: {close_err}")
+
 
 app = FastAPI(
     title="Quotex AI Signal System",
-    description="Backend API with X-API-Key Passkey Protection",
-    version="1.0.0",
+    description="Enterprise API with Passkey Protection & Automated GitHub Persistence",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
-# API Key Protection Setup
+# API Key Security Setup
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
@@ -55,19 +108,19 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
         if not IS_DEBUG:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Server configuration error: API_KEY is not set",
+                detail="Server configuration error: API_KEY environment variable is not set.",
             )
         return api_key
 
     if not api_key or api_key != expected_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized: Invalid or missing X-API-Key header",
+            detail="Unauthorized: Invalid or missing X-API-Key header.",
         )
     return api_key
 
 
-# CORS Setup
+# Dynamic CORS Policy Configuration
 if IS_DEBUG:
     app.add_middleware(
         CORSMiddleware,
@@ -84,10 +137,8 @@ else:
 
     if not allowed_origins:
         logger.warning(
-            "WARNING: ALLOWED_ORIGINS is empty in production! Defaulting to"
-            " strict secure restrictions."
+            "WARNING: ALLOWED_ORIGINS is empty in production! Defaulting to strict secure restrictions."
         )
-        allowed_origins = []
 
     app.add_middleware(
         CORSMiddleware,
@@ -97,93 +148,37 @@ else:
         allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     )
 
-# ENV Validation
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-REPO_OWNER = os.getenv("REPO_OWNER", "")
-REPO_NAME = os.getenv("REPO_NAME", "")
-QUOTEX_EMAIL = os.getenv("QUOTEX_EMAIL", "")
-QUOTEX_PASSWORD = os.getenv("QUOTEX_PASSWORD", "")
 
-if not all([GITHUB_TOKEN, REPO_OWNER, REPO_NAME]):
-    error_msg = (
-        "Critical Error: GitHub configurations are missing in environment"
-        " variables!"
-    )
-    if not IS_DEBUG:
-        raise RuntimeError(error_msg)
-    else:
-        logger.warning(error_msg)
-
-if not all([QUOTEX_EMAIL, QUOTEX_PASSWORD]):
-    logger.warning(
-        "WARNING: QUOTEX_EMAIL or QUOTEX_PASSWORD is not set in environment"
-        " variables."
-    )
-
-# Shared live_fetcher to prevent multiple logins
-strategy_engine = StrategyEngine(fetcher=live_fetcher)
-trust_engine = TrustEngine(
-    github_token=GITHUB_TOKEN, repo_owner=REPO_OWNER, repo_name=REPO_NAME
-)
-
-
-# Pydantic Schemas
+# Pydantic Response Schemas
 class RootResponse(BaseModel):
-    status: str = Field(..., json_schema_extra={"examples": ["online"]})
-    message: str = Field(
-        ...,
-        json_schema_extra={
-            "examples": ["Quotex AI Signal Server is Running"]
-        },
-    )
+    status: str = Field(..., examples=["online"])
+    message: str = Field(..., examples=["Quotex AI Signal Server is Running"])
 
 
 class HealthResponse(BaseModel):
-    status: str = Field(..., json_schema_extra={"examples": ["healthy"]})
-    service: str = Field(
-        ..., json_schema_extra={"examples": ["Quotex AI Signal Backend"]}
-    )
-    timestamp: str = Field(
-        ..., json_schema_extra={"examples": ["2026-09-22 22:55:00"]}
-    )
+    status: str = Field(..., examples=["healthy"])
+    service: str = Field(..., examples=["Quotex AI Signal Backend"])
+    timestamp: str = Field(..., examples=["2026-09-29 21:30:00"])
 
 
 class SignalResponse(BaseModel):
-    status: str = Field(..., json_schema_extra={"examples": ["SUCCESS"]})
-    id: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["SIG-1695200000-A1B2"]}
-    )
-    asset: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["EUR/USD"]}
-    )
-    direction: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["UP"]}
-    )
-    score: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["8/10"]}
-    )
-    percentage: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["80.0%"]}
-    )
-    timeframe: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["1m"]}
-    )
-    timestamp: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["2026-09-21 18:47:00"]}
-    )
-    hash: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["a1b2c3d4..."]}
-    )
-    github_status: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["QUEUED"]}
-    )
+    status: str = Field(..., examples=["SUCCESS"])
+    id: Optional[str] = Field(None, examples=["SIG-1727616600-A1B2"])
+    asset: Optional[str] = Field(None, examples=["EUR/USD"])
+    direction: Optional[str] = Field(None, examples=["CALL"])
+    score: Optional[str] = Field(None, examples=["8/10"])
+    percentage: Optional[str] = Field(None, examples=["80.0%"])
+    timeframe: Optional[str] = Field(None, examples=["1m"])
+    timestamp: Optional[str] = Field(None, examples=["2026-09-29 21:30:00"])
+    hash: Optional[str] = Field(None, examples=["a1b2c3d4..."])
+    github_status: Optional[str] = Field(None, examples=["QUEUED"])
     message: Optional[str] = Field(
-        None, json_schema_extra={"examples": ["65%+ confirmation pawa jayni"]}
+        None, examples=["65%+ confirmation pawa jayni"]
     )
 
 
 def parse_score_to_percentage(score_val: Any) -> float:
-    """Parses score values (e.g., '8/10', '8/9', '88.9%', 88.9, 0.88) into a 0-100 float percentage."""
+    """Safely converts scores ('8/10', '80%', 0.8, 80) into a clean percentage float (0.0 to 100.0)."""
     try:
         if isinstance(score_val, (int, float)):
             val = float(score_val)
@@ -208,6 +203,7 @@ def parse_score_to_percentage(score_val: Any) -> float:
 
 
 async def async_github_commit(signal_data: Dict[str, Any], signal_hash: str):
+    """Executes blocking GitHub commits asynchronously with retry backoff."""
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -215,19 +211,16 @@ async def async_github_commit(signal_data: Dict[str, Any], signal_hash: str):
                 trust_engine.commit_to_github, signal_data, signal_hash
             )
             logger.info(
-                f"Signal {signal_data.get('id')} committed to GitHub"
-                f" successfully: {url}"
+                f"Signal {signal_data.get('id')} committed to GitHub successfully: {url}"
             )
             return
         except Exception as err:
             logger.warning(
-                f"GitHub commit attempt {attempt + 1} failed for"
-                f" {signal_data.get('id')}: {err}"
+                f"GitHub commit attempt {attempt + 1} failed for {signal_data.get('id')}: {err}"
             )
             if attempt == max_retries - 1:
                 logger.error(
-                    "All retry attempts failed for GitHub commit:"
-                    f" {signal_data.get('id')}"
+                    f"All retry attempts failed for GitHub commit: {signal_data.get('id')}"
                 )
             else:
                 await asyncio.sleep(2 * (attempt + 1))
@@ -259,11 +252,11 @@ async def get_on_demand_signal(
     timeframe: Literal["1m", "5m", "10m", "15m", "30m", "1hr"] = "1m",
 ):
     try:
-        # Check connection status safely (Defaults to False if property missing)
-        if not getattr(live_fetcher, "is_connected", False):
+        # Check connection status safely without throwing AttributeError
+        if not live_fetcher or not getattr(live_fetcher, "is_connected", False):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="API DISCONNECTED",
+                detail="API DISCONNECTED: Market fetcher is currently offline or re-authenticating.",
             )
 
         live_scan = await strategy_engine.scan_best_stable_market(
@@ -296,15 +289,13 @@ async def get_on_demand_signal(
 
         if score_percentage < 65.0 or direction in ["NO_SIGNAL", "HOLD"]:
             logger.info(
-                f"Signal confirmation failed for {symbol}. Score:"
-                f" {score_percentage:.1f}%"
+                f"Signal confirmation failed for {symbol}. Score: {score_percentage:.1f}%"
             )
             return SignalResponse(
                 status="NO_SIGNAL",
                 timeframe=timeframe,
                 message=(
-                    "65%+ confirmation pawa jayni (Current Score:"
-                    f" {raw_score} / {score_percentage:.1f}%)"
+                    f"65%+ confirmation pawa jayni (Current Score: {raw_score} / {score_percentage:.1f}%)"
                 ),
             )
 
@@ -324,8 +315,7 @@ async def get_on_demand_signal(
         )
 
         logger.info(
-            f"Signal generated successfully: {signal_id} ({symbol}) for"
-            f" {timeframe}"
+            f"Signal generated successfully: {signal_id} ({symbol}) for {timeframe}"
         )
 
         return SignalResponse(
