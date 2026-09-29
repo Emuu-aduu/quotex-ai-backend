@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quotex AI Pro Signal Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #0b0f17;
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .pulse-glow-green {
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.25);
+        }
+        .pulse-glow-red {
+            box-shadow: 0 0 25px rgba(244, 63, 94, 0.25);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-start p-4 md:p-8">
+
+    <!-- Top Navigation / Header with Live API Connection Indicator -->
+    <header class="w-full max-w-xl flex items-center justify-between mb-6 glass-card p-4 rounded-2xl">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                <i data-lucide="bot" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold leading-tight">Quotex AI Engine</h1>
+                <p class="text-xs text-slate-400">v2.0 Enterprise Backend</p>
+            </div>
+        </div>
+        
+        <!-- API Connection Status Badge -->
+        <div class="flex items-center space-x-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-700/60">
+            <span id="apiStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+            <span id="apiStatusText" class="text-xs font-semibold text-slate-400">Checking API...</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="w-full max-w-xl space-y-6">
+
+        <!-- Control Panel Card -->
+        <div class="glass-card p-6 rounded-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-700/50 pb-3">
+                <h2 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i> API & Settings
+                </h2>
+                <button onclick="toggleKeyVisibility()" class="text-xs text-indigo-400 hover:text-indigo-300">
+                    <i data-lucide="eye" id="eyeIcon" class="w-4 h-4 inline"></i>
+                </button>
+            </div>
+
+            <!-- Passkey Input -->
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Passkey (X-API-Key)</label>
+                <input type="password" id="apiKey" placeholder="Enter API Passkey" 
+                    class="w-full px-4 py-2.5 bg-slate-900/80 border border-slate-700/80 rounded-xl focus:outline-none focus:border-indigo-500 text-sm text-white tracking-wide transition">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <!-- Timeframe Selection -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Timeframe</label>
+                    <select id="timeframe" class="w-full px-3 py-2.5 bg-slate-900/80 border border-slate-700/80 rounded-xl focus:outline-none focus:border-indigo-500 text-sm text-white">
+                        <option value="1m">1 Minute (1m)</option>
+                        <option value="5m">5 Minutes (5m)</option>
+                        <option value="15m">15 Minutes (15m)</option>
+                    </select>
+                </div>
+
+                <!-- Auto-Scan Toggle -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Auto Scan Mode</label>
+                    <button id="btnAutoScan" onclick="toggleAutoScan()" 
+                        class="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-slate-300 flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="autoIcon"></i>
+                        <span id="autoText">Auto Scan: OFF</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Get Signal Button -->
+            <button onclick="fetchSignal()" id="btnSignal" 
+                class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] font-semibold text-sm rounded-xl transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20">
+                <i data-lucide="zap" class="w-4 h-4"></i> Get Instant Signal
+            </button>
+        </div>
+
+        <!-- Signal Result Card -->
+        <div id="resultCard" class="hidden glass-card p-6 rounded-2xl text-center space-y-4 transition-all duration-300">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <span id="badge" class="px-3 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-400 border border-slate-700">SCANNING</span>
+                <span id="signalTime" class="text-xs text-slate-400 font-mono">--:--:--</span>
+            </div>
+            
+            <!-- Signal Direction Display -->
+            <div class="py-2">
+                <div id="directionIcon" class="flex justify-center mb-1"></div>
+                <div id="signalDirection" class="text-5xl font-black tracking-tight text-slate-400">WAIT</div>
+            </div>
+            
+            <!-- Signal Metrics (Rating, Accuracy, Timeframe) -->
+            <div class="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-slate-800/80">
+                <div class="bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                    <span class="text-slate-500 block mb-1">Asset Pair</span>
+                    <strong id="assetName" class="text-sm font-semibold text-slate-200">---</strong>
+                </div>
+                <div class="bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                    <span class="text-slate-500 block mb-1">Accuracy Score</span>
+                    <strong id="accuracy" class="text-sm font-semibold text-slate-200">---</strong>
+                </div>
+                <div class="bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                    <span class="text-slate-500 block mb-1">Rating/Score</span>
+                    <strong id="ratingScore" class="text-sm font-semibold text-indigo-400">---</strong>
+                </div>
+            </div>
+            
+            <p id="reasonMsg" class="text-xs text-slate-400 italic bg-slate-900/30 py-2 px-3 rounded-lg"></p>
+
+            <!-- Copy Signal Action -->
+            <button id="btnCopy" onclick="copySignalDetails()" class="hidden w-full py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg flex items-center justify-center gap-1.5 transition">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Signal Details
+            </button>
+        </div>
+
+        <!-- Signal History Log -->
+        <div class="glass-card p-5 rounded-2xl space-y-3">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <i data-lucide="history" class="w-4 h-4 text-indigo-400"></i> Recent Signals Log
+            </h3>
+            <div id="historyContainer" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-xs text-slate-400">
+                <p class="text-center py-4 text-slate-600">No signals generated in this session yet.</p>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const BACKEND_URL = "https://quotex-ai-backend-zzp8.onrender.com";
+        let autoScanInterval = null;
+        let lastSignalData = null;
+
+        // Initialize App & Check Connections
+        document.addEventListener("DOMContentLoaded", () => {
+            lucide.createIcons();
+            const savedKey = localStorage.getItem("quotex_api_key");
+            if (savedKey) {
+                document.getElementById("apiKey").value = savedKey;
+            }
+            checkApiConnection();
+        });
+
+        // Save Key & Re-check Connection on Input
+        document.getElementById("apiKey").addEventListener("input", (e) => {
+            const keyVal = e.target.value.trim();
+            localStorage.setItem("quotex_api_key", keyVal);
+            checkApiConnection();
+        });
+
+        // Live API Connection Checker
+        async function checkApiConnection() {
+            const apiKey = document.getElementById("apiKey").value.trim();
+            const statusText = document.getElementById("apiStatusText");
+            const statusDot = document.getElementById("apiStatusDot");
+
+            if (!apiKey) {
+                statusText.innerText = "No Passkey";
+                statusText.className = "text-xs font-semibold text-slate-400";
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-slate-500";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/health`, { method: "GET" });
+                if (response.ok) {
+                    statusText.innerText = "API Connected";
+                    statusText.className = "text-xs font-semibold text-emerald-400";
+                    statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                } else {
+                    statusText.innerText = "API Error";
+                    statusText.className = "text-xs font-semibold text-rose-400";
+                    statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+                }
+            } catch (e) {
+                statusText.innerText = "API Offline";
+                statusText.className = "text-xs font-semibold text-rose-400";
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+            }
+        }
+
+        function toggleKeyVisibility() {
+            const input = document.getElementById("apiKey");
+            input.type = input.type === "password" ? "text" : "password";
+        }
+
+        // Web Audio Chime Generator
+        function playChime(isSuccess) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.frequency.setValueAtTime(isSuccess ? 880 : 330, ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+                
+                osc.start();
+                osc.stop(ctx.currentTime + 0.4);
+            } catch (e) {
+                console.log("Audio alert suppressed by browser.");
+            }
+        }
+
+        async function fetchSignal() {
+            const apiKey = document.getElementById("apiKey").value.trim();
+            const timeframe = document.getElementById("timeframe").value;
+            const btn = document.getElementById("btnSignal");
+            const resultCard = document.getElementById("resultCard");
+
+            if (!apiKey) {
+                alert("Please enter your X-API-Key!");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Scanning Market...`;
+            lucide.createIcons();
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/get-signal?timeframe=${timeframe}`, {
+                    method: "GET",
+                    headers: {
+                        "X-API-Key": apiKey,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                const data = await response.json();
+                resultCard.classList.remove("hidden");
+                document.getElementById("signalTime").innerText = new Date().toLocaleTimeString();
+
+                if (response.ok && data.status === "SUCCESS") {
+                    lastSignalData = data;
+                    playChime(true);
+
+                    // Card Styling
+                    resultCard.className = `glass-card p-6 rounded-2xl text-center space-y-4 transition-all duration-300 ${data.direction === 'CALL' || data.direction === 'BUY' ? 'pulse-glow-green border-emerald-500/40' : 'pulse-glow-red border-rose-500/40'}`;
+                    
+                    document.getElementById("badge").className = "px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+                    document.getElementById("badge").innerText = "CONFIRMED SIGNAL";
+                    
+                    const dirElem = document.getElementById("signalDirection");
+                    const iconContainer = document.getElementById("directionIcon");
+                    
+                    if (data.direction === "CALL" || data.direction === "BUY") {
+                        dirElem.innerText = "CALL / BUY";
+                        dirElem.className = "text-4xl font-black text-emerald-400";
+                        iconContainer.innerHTML = `<i data-lucide="trending-up" class="w-12 h-12 text-emerald-400"></i>`;
+                    } else {
+                        dirElem.innerText = "PUT / SELL";
+                        dirElem.className = "text-4xl font-black text-rose-500";
+                        iconContainer.innerHTML = `<i data-lucide="trending-down" class="w-12 h-12 text-rose-500"></i>`;
+                    }
+
+                    // Display Asset, Accuracy, and Rating
+                    document.getElementById("assetName").innerText = data.asset || "EUR/USD";
+                    document.getElementById("accuracy").innerText = data.percentage || "0%";
+                    document.getElementById("ratingScore").innerText = data.score || "8/10";
+                    document.getElementById("reasonMsg").innerText = `Hash: ${data.hash ? data.hash.substring(0, 12) + '...' : 'Verified'}`;
+                    document.getElementById("btnCopy").classList.remove("hidden");
+
+                    addToHistory(data);
+
+                } else {
+                    lastSignalData = null;
+                    playChime(false);
+                    resultCard.className = "glass-card p-6 rounded-2xl text-center space-y-4 border-slate-700";
+                    
+                    document.getElementById("badge").className = "px-3 py-1 text-xs font-bold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30";
+                    document.getElementById("badge").innerText = data.status || "NO SIGNAL";
+                    
+                    document.getElementById("directionIcon").innerHTML = `<i data-lucide="shield-alert" class="w-10 h-10 text-slate-500"></i>`;
+                    document.getElementById("signalDirection").innerText = "WAIT";
+                    document.getElementById("signalDirection").className = "text-4xl font-black text-slate-400";
+                    
+                    document.getElementById("assetName").innerText = "---";
+                    document.getElementById("accuracy").innerText = "---";
+                    document.getElementById("ratingScore").innerText = "---";
+                    document.getElementById("reasonMsg").innerText = data.message || data.detail || "Market confirmation below threshold (65%).";
+                    document.getElementById("btnCopy").classList.add("hidden");
+                }
+
+                checkApiConnection(); // Refresh Status Light
+
+            } catch (error) {
+                alert("Server Connection Error: " + error.message);
+                checkApiConnection();
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="zap" class="w-4 h-4"></i> Get Instant Signal`;
+                lucide.createIcons();
+            }
+        }
+
+        function toggleAutoScan() {
+            const btn = document.getElementById("btnAutoScan");
+            const text = document.getElementById("autoText");
+            const icon = document.getElementById("autoIcon");
+
+            if (autoScanInterval) {
+                clearInterval(autoScanInterval);
+                autoScanInterval = null;
+                text.innerText = "Auto Scan: OFF";
+                btn.className = "w-full py-2.5 px-3 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5";
+                icon.classList.remove("animate-spin");
+            } else {
+                fetchSignal();
+                autoScanInterval = setInterval(fetchSignal, 45000);
+                text.innerText = "Auto Scan: ON";
+                btn.className = "w-full py-2.5 px-3 bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5";
+                icon.classList.add("animate-spin");
+            }
+        }
+
+        function addToHistory(data) {
+            const container = document.getElementById("historyContainer");
+            if (container.children[0]?.tagName === 'P') {
+                container.innerHTML = '';
+            }
+
+            const item = document.createElement("div");
+            item.className = "flex items-center justify-between p-2.5 bg-slate-900/60 rounded-xl border border-slate-800/80";
+            
+            const isCall = data.direction === "CALL" || data.direction === "BUY";
+            const colorClass = isCall ? "text-emerald-400" : "text-rose-500";
+            
+            item.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="font-bold ${colorClass}">${data.direction}</span>
+                    <span class="text-slate-300">${data.asset}</span>
+                    <span class="text-slate-500 text-[10px]">(${data.timeframe})</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="font-mono text-slate-300">${data.percentage} (${data.score})</span>
+                    <span class="text-slate-500 text-[10px]">${data.timestamp ? data.timestamp.split(' ')[1] : ''}</span>
+                </div>
+            `;
+            
+            container.prepend(item);
+            if (container.children.length > 5) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function copySignalDetails() {
+            if (!lastSignalData) return;
+            const text = `🚨 QUOTEX AI SIGNAL 🚨\nAsset: ${lastSignalData.asset}\nDirection: ${lastSignalData.direction}\nTimeframe: ${lastSignalData.timeframe}\nAccuracy: ${lastSignalData.percentage}\nRating: ${lastSignalData.score}\nTime: ${lastSignalData.timestamp}`;
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Signal details copied to clipboard!");
+            });
+        }
+    </script>
+</body>
+</html>
