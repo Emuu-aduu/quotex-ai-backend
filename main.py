@@ -20,7 +20,8 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 import uvicorn
 
-from live_fetcher import live_fetcher
+from live_fetcher import LiveFetcher
+live_fetcher = LiveFetcher()
 from strategy_engine import StrategyEngine
 from trust_engine import TrustEngine
 
