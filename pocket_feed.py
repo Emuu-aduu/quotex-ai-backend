@@ -1,54 +1,65 @@
 import asyncio
+import importlib
 import logging
 import os
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
-# Pocket Option Async/WebSocket Library Robust Multi-Path Import Guard
+logger = logging.getLogger(__name__)
+
+# Dynamic Auto-Discovery Engine for PocketOption Library Classes
 PocketOption = None
-_import_errors = []
+_import_details = []
 
-# Try Path 1: Direct Async Module Import (Most Common for ChipaDevTeam / Async repos)
 try:
-    from pocketoptionapi_async import PocketOption
-except Exception as e:
-    _import_errors.append(f"pocketoptionapi_async: {e}")
+    import pocketoptionapi_async as po_async
+    _import_details.append(f"pocketoptionapi_async exports: {dir(po_async)}")
 
-# Try Path 2: Async Module with stable_api
-if PocketOption is None:
-    try:
-        from pocketoptionapi_async.stable_api import PocketOption
-    except Exception as e:
-        _import_errors.append(f"pocketoptionapi_async.stable_api: {e}")
+    # 1. Search main package for common class names
+    for attr_name in ["PocketOptionAsync", "PocketOption", "AsyncPocketOption", "PocketOptionClient", "Client"]:
+        if hasattr(po_async, attr_name):
+            PocketOption = getattr(po_async, attr_name)
+            logger.info(f"[POCKET OPTION IMPORT SUCCESS] Loaded '{attr_name}' from pocketoptionapi_async")
+            break
 
-# Try Path 3: Async Module with api
-if PocketOption is None:
-    try:
-        from pocketoptionapi_async.api import PocketOption
-    except Exception as e:
-        _import_errors.append(f"pocketoptionapi_async.api: {e}")
+    # 2. Search sub-modules if not found in main module
+    if PocketOption is None:
+        sub_modules = ["pocketoption", "client", "api", "stable_api", "async_api", "main"]
+        for sub_name in sub_modules:
+            try:
+                sub_mod = importlib.import_module(f"pocketoptionapi_async.{sub_name}")
+                for attr_name in ["PocketOptionAsync", "PocketOption", "AsyncPocketOption", "PocketOptionClient", "Client"]:
+                    if hasattr(sub_mod, attr_name):
+                        PocketOption = getattr(sub_mod, attr_name)
+                        logger.info(f"[POCKET OPTION IMPORT SUCCESS] Loaded '{attr_name}' from pocketoptionapi_async.{sub_name}")
+                        break
+                if PocketOption is not None:
+                    break
+            except ImportError:
+                continue
+except ImportError as e:
+    _import_details.append(f"pocketoptionapi_async import error: {e}")
 
-# Try Path 4: Standard pocketoptionapi Module
+# Fallback to sync pocketoptionapi package if installed
 if PocketOption is None:
-    try:
-        from pocketoptionapi import PocketOption
-    except Exception as e:
-        _import_errors.append(f"pocketoptionapi: {e}")
-
-# Try Path 5: Standard pocketoptionapi with stable_api
-if PocketOption is None:
-    try:
-        from pocketoptionapi.stable_api import PocketOption
-    except Exception as e:
-        _import_errors.append(f"pocketoptionapi.stable_api: {e}")
+    for pkg_path in ["pocketoptionapi.stable_api", "pocketoptionapi"]:
+        try:
+            mod = importlib.import_module(pkg_path)
+            for attr_name in ["PocketOption", "PocketOptionAsync"]:
+                if hasattr(mod, attr_name):
+                    PocketOption = getattr(mod, attr_name)
+                    logger.info(f"[POCKET OPTION IMPORT SUCCESS] Loaded '{attr_name}' from {pkg_path}")
+                    break
+            if PocketOption is not None:
+                break
+        except ImportError as e:
+            _import_details.append(f"{pkg_path} import error: {e}")
 
 # Safe Config & Single Source Pair List Import
 try:
     from config import settings
 except ImportError:
     settings = None
-
-logger = logging.getLogger(__name__)
 
 # Single Source of Truth for Default Pairs
 DEFAULT_PAIRS = getattr(
@@ -64,11 +75,7 @@ DEFAULT_PAIRS = getattr(
 
 
 class PocketOptionFeed:
-    """Production-Grade Persistent Pocket Option API Data Feed Handler.
-
-    Fully compatible with Config, StrategyEngine, LiveFetcher, and TrustEngine pipelines.
-    Handles persistent connection, SSID/Credentials authentication, and DataFrame conversion.
-    """
+    """Production-Grade Persistent Pocket Option API Data Feed Handler."""
 
     def __init__(
         self,
@@ -100,14 +107,14 @@ class PocketOptionFeed:
         self._lock = asyncio.Lock()
 
     async def connect(self) -> bool:
-        """Establishes thread/coro safe connection to Pocket Option WebSocket."""
+        """Establishes safe connection supporting both sync and async SDK methods."""
         async with self._lock:
             if self._is_connected and self.client:
                 return True
 
             if PocketOption is None:
                 logger.error(
-                    f"[POCKET OPTION ERROR] Could not import PocketOption library! Attempted paths failed: {_import_errors}"
+                    f"[POCKET OPTION ERROR] Could not locate valid PocketOption class! Details: {_import_details}"
                 )
                 return False
 
@@ -123,15 +130,22 @@ class PocketOptionFeed:
                     )
                     return False
 
-                # Connect coroutine execution via thread wrapper for synchronous SDKs
-                res = await asyncio.to_thread(self.client.connect)
+                # Connect supporting both async coroutines and sync blocking functions
+                connect_fn = getattr(self.client, "connect", None)
+                if connect_fn:
+                    if asyncio.iscoroutinefunction(connect_fn):
+                        res = await connect_fn()
+                    else:
+                        res = await asyncio.to_thread(connect_fn)
+                else:
+                    res = True
 
-                # Tuple extraction guard for (bool, msg) return types
+                # Extract status if tuple returned
                 if isinstance(res, tuple):
                     check = bool(res[0])
                     reason = res[1] if len(res) > 1 else ""
                 else:
-                    check = bool(res)
+                    check = bool(res) if res is not None else True
                     reason = ""
 
                 if check:
@@ -139,7 +153,7 @@ class PocketOptionFeed:
                     logger.info("[POCKET OPTION CONNECTED] Persistent WebSocket active.")
                     return True
                 else:
-                    logger.error(f"[POCKET OPTION FAILED] Connection refused by broker. Reason: {reason}")
+                    logger.error(f"[POCKET OPTION FAILED] Connection refused. Reason: {reason}")
                     self._is_connected = False
                     return False
 
@@ -177,7 +191,6 @@ class PocketOptionFeed:
         )
         clean = clean_fn(raw_symbol)
 
-        # Pocket Option prefixes OTC assets with '#' internally in some API versions
         if "OTC" in clean.upper() and not clean.startswith("#"):
             return f"#{clean}"
         return clean
@@ -185,13 +198,12 @@ class PocketOptionFeed:
     async def get_candles(
         self, symbol: str, period_sec: int = 60, count: int = 50
     ) -> List[Dict[str, Any]]:
-        """Fetches historical candles asynchronously with auto-reconnect fallback."""
+        """Fetches historical candles asynchronously with fallback retry."""
         if not self._is_connected or not self.client:
             connected = await self.connect()
             if not connected:
                 return []
 
-        # Validate against OTC and Approved Pairs settings
         check_otc = getattr(settings, "ALLOW_OTC", self.allow_otc)
         if not check_otc and "OTC" in symbol.upper():
             logger.warning(f"[SECURITY FILTER] OTC Pair Blocked: '{symbol}'")
@@ -205,23 +217,27 @@ class PocketOptionFeed:
         po_symbol = self._format_symbol_for_pocket(symbol)
 
         try:
-            # Non-blocking async fetch from SDK
-            candles = await asyncio.to_thread(
-                self.client.get_candles, po_symbol, period_sec, count
-            )
+            get_candles_fn = getattr(self.client, "get_candles", None)
+            if not get_candles_fn:
+                logger.error("[POCKET OPTION ERROR] 'get_candles' method missing on client.")
+                return []
+
+            if asyncio.iscoroutinefunction(get_candles_fn):
+                candles = await get_candles_fn(po_symbol, period_sec, count)
+            else:
+                candles = await asyncio.to_thread(get_candles_fn, po_symbol, period_sec, count)
 
             if candles and isinstance(candles, list):
-                logger.debug(
-                    f"[POCKET OPTION FETCH] Asset: {symbol} ({po_symbol}) | Count: {len(candles)}"
-                )
                 return candles[-count:]
 
-            # Fallback retry without '#' prefix if first attempt returned empty
+            # Retry without '#' prefix
             alt_symbol = po_symbol.lstrip("#")
             if alt_symbol != po_symbol:
-                candles = await asyncio.to_thread(
-                    self.client.get_candles, alt_symbol, period_sec, count
-                )
+                if asyncio.iscoroutinefunction(get_candles_fn):
+                    candles = await get_candles_fn(alt_symbol, period_sec, count)
+                else:
+                    candles = await asyncio.to_thread(get_candles_fn, alt_symbol, period_sec, count)
+
                 if candles and isinstance(candles, list):
                     return candles[-count:]
 
@@ -236,10 +252,8 @@ class PocketOptionFeed:
     async def fetch_candles_df(
         self, symbol: str, period_sec: int = 60, count: int = 50
     ) -> Optional[pd.DataFrame]:
-        """Adapter for StrategyEngine and LiveFetcher: Returns clean, standardized DataFrame."""
-        candles = await self.get_candles(
-            symbol=symbol, period_sec=period_sec, count=count
-        )
+        """Returns clean, standardized DataFrame."""
+        candles = await self.get_candles(symbol=symbol, period_sec=period_sec, count=count)
         if not candles:
             return None
 
@@ -247,10 +261,8 @@ class PocketOptionFeed:
         if df.empty:
             return None
 
-        # Standardize column casing to lowercase
         df.columns = [str(col).lower() for col in df.columns]
 
-        # Standardize timestamp key & dynamic unit detection
         ts_col = next((c for c in ["time", "timestamp", "t"] if c in df.columns), None)
         if ts_col:
             try:
@@ -289,7 +301,6 @@ if __name__ == "__main__":
         print(f"Connection Status: {connected}")
 
         if connected:
-            print("\n1. Testing Candle DataFrame Fetch (EURUSD_otc):")
             df = await feed.fetch_candles_df("EURUSD_otc", period_sec=60, count=10)
             if df is not None:
                 print(f"DataFrame Shape: {df.shape}")
