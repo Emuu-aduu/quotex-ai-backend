@@ -4,14 +4,43 @@ import os
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
-# Pocket Option Async/WebSocket Library Import Guard (Supports both sync & async package names)
+# Pocket Option Async/WebSocket Library Robust Multi-Path Import Guard
+PocketOption = None
+_import_errors = []
+
+# Try Path 1: Direct Async Module Import (Most Common for ChipaDevTeam / Async repos)
 try:
-    from pocketoptionapi.stable_api import PocketOption
-except ImportError:
+    from pocketoptionapi_async import PocketOption
+except Exception as e:
+    _import_errors.append(f"pocketoptionapi_async: {e}")
+
+# Try Path 2: Async Module with stable_api
+if PocketOption is None:
     try:
         from pocketoptionapi_async.stable_api import PocketOption
-    except ImportError:
-        PocketOption = None
+    except Exception as e:
+        _import_errors.append(f"pocketoptionapi_async.stable_api: {e}")
+
+# Try Path 3: Async Module with api
+if PocketOption is None:
+    try:
+        from pocketoptionapi_async.api import PocketOption
+    except Exception as e:
+        _import_errors.append(f"pocketoptionapi_async.api: {e}")
+
+# Try Path 4: Standard pocketoptionapi Module
+if PocketOption is None:
+    try:
+        from pocketoptionapi import PocketOption
+    except Exception as e:
+        _import_errors.append(f"pocketoptionapi: {e}")
+
+# Try Path 5: Standard pocketoptionapi with stable_api
+if PocketOption is None:
+    try:
+        from pocketoptionapi.stable_api import PocketOption
+    except Exception as e:
+        _import_errors.append(f"pocketoptionapi.stable_api: {e}")
 
 # Safe Config & Single Source Pair List Import
 try:
@@ -78,7 +107,7 @@ class PocketOptionFeed:
 
             if PocketOption is None:
                 logger.error(
-                    "[POCKET OPTION ERROR] 'pocketoptionapi' or 'pocketoptionapi_async' library is not installed!"
+                    f"[POCKET OPTION ERROR] Could not import PocketOption library! Attempted paths failed: {_import_errors}"
                 )
                 return False
 
