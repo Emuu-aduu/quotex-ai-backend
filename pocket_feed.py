@@ -4,11 +4,14 @@ import os
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
-# Pocket Option Async/WebSocket Library Import Guard
+# Pocket Option Async/WebSocket Library Import Guard (Supports both sync & async package names)
 try:
     from pocketoptionapi.stable_api import PocketOption
 except ImportError:
-    PocketOption = None
+    try:
+        from pocketoptionapi_async.stable_api import PocketOption
+    except ImportError:
+        PocketOption = None
 
 # Safe Config & Single Source Pair List Import
 try:
@@ -46,7 +49,6 @@ class PocketOptionFeed:
         allow_otc: bool = True,
     ):
         self.ssid = ssid or os.getenv("POCKETOPTION_SSID", "")
-        # Fix #2: Corrected Pocket Option Credentials Keys (Removing Quotex copy-paste bug)
         self.email = (
             email
             or getattr(settings, "POCKETOPTION_EMAIL", "")
@@ -76,7 +78,7 @@ class PocketOptionFeed:
 
             if PocketOption is None:
                 logger.error(
-                    "[POCKET OPTION ERROR] 'pocketoptionapi' library is not installed!"
+                    "[POCKET OPTION ERROR] 'pocketoptionapi' or 'pocketoptionapi_async' library is not installed!"
                 )
                 return False
 
@@ -199,7 +201,6 @@ class PocketOptionFeed:
 
         except Exception as err:
             logger.error(f"[POCKET OPTION FEED ERROR] Asset: {symbol} | Error: {err}")
-            # Fix #3: Reset connection status on runtime communication error
             self._is_connected = False
             return []
 
@@ -220,7 +221,7 @@ class PocketOptionFeed:
         # Standardize column casing to lowercase
         df.columns = [str(col).lower() for col in df.columns]
 
-        # Fix #4: Standardize timestamp key & dynamic unit detection
+        # Standardize timestamp key & dynamic unit detection
         ts_col = next((c for c in ["time", "timestamp", "t"] if c in df.columns), None)
         if ts_col:
             try:
@@ -244,7 +245,7 @@ class PocketOptionFeed:
         return pairs
 
 
-# Fix #1: Class Alias for Backward Compatibility
+# Class Alias for Backward Compatibility
 PocketOptionDataFeed = PocketOptionFeed
 
 
