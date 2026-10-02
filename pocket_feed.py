@@ -31,10 +31,10 @@ DEFAULT_PAIRS = getattr(
 )
 
 
-class PocketOptionDataFeed:
+class PocketOptionFeed:
     """Production-Grade Persistent Pocket Option API Data Feed Handler.
 
-    Fully compatible with Config, StrategyEngine, and TrustEngine pipelines.
+    Fully compatible with Config, StrategyEngine, LiveFetcher, and TrustEngine pipelines.
     Handles persistent connection, SSID/Credentials authentication, and DataFrame conversion.
     """
 
@@ -46,15 +46,18 @@ class PocketOptionDataFeed:
         allow_otc: bool = True,
     ):
         self.ssid = ssid or os.getenv("POCKETOPTION_SSID", "")
+        # Fix #2: Corrected Pocket Option Credentials Keys (Removing Quotex copy-paste bug)
         self.email = (
             email
-            or getattr(settings, "QUOTEX_EMAIL", "")
-            or os.getenv("QUOTEX_EMAIL", "")
+            or getattr(settings, "POCKETOPTION_EMAIL", "")
+            or os.getenv("POCKETOPTION_EMAIL", "")
+            or os.getenv("POCKET_EMAIL", "")
         )
         self.password = (
             password
-            or getattr(settings, "QUOTEX_PASSWORD", "")
-            or os.getenv("QUOTEX_PASSWORD", "")
+            or getattr(settings, "POCKETOPTION_PASSWORD", "")
+            or os.getenv("POCKETOPTION_PASSWORD", "")
+            or os.getenv("POCKET_PASSWORD", "")
         )
         self.allow_otc = (
             allow_otc
@@ -89,10 +92,10 @@ class PocketOptionDataFeed:
                     )
                     return False
 
-                # Connect coroutine execution
+                # Connect coroutine execution via thread wrapper for synchronous SDKs
                 res = await asyncio.to_thread(self.client.connect)
 
-                # Fix #1: Tuple extraction guard for (bool, msg) return types
+                # Tuple extraction guard for (bool, msg) return types
                 if isinstance(res, tuple):
                     check = bool(res[0])
                     reason = res[1] if len(res) > 1 else ""
@@ -143,7 +146,7 @@ class PocketOptionDataFeed:
         )
         clean = clean_fn(raw_symbol)
 
-        # Pocket Option prefixes OTC assets with '#' internally
+        # Pocket Option prefixes OTC assets with '#' internally in some API versions
         if "OTC" in clean.upper() and not clean.startswith("#"):
             return f"#{clean}"
         return clean
@@ -151,8 +154,8 @@ class PocketOptionDataFeed:
     async def get_candles(
         self, symbol: str, period_sec: int = 60, count: int = 50
     ) -> List[Dict[str, Any]]:
-        """Fetches historical candles asynchronously."""
-        if not self._is_connected:
+        """Fetches historical candles asynchronously with auto-reconnect fallback."""
+        if not self._is_connected or not self.client:
             connected = await self.connect()
             if not connected:
                 return []
@@ -177,7 +180,7 @@ class PocketOptionDataFeed:
             )
 
             if candles and isinstance(candles, list):
-                logger.info(
+                logger.debug(
                     f"[POCKET OPTION FETCH] Asset: {symbol} ({po_symbol}) | Count: {len(candles)}"
                 )
                 return candles[-count:]
@@ -196,13 +199,14 @@ class PocketOptionDataFeed:
 
         except Exception as err:
             logger.error(f"[POCKET OPTION FEED ERROR] Asset: {symbol} | Error: {err}")
+            # Fix #3: Reset connection status on runtime communication error
             self._is_connected = False
             return []
 
     async def fetch_candles_df(
         self, symbol: str, period_sec: int = 60, count: int = 50
     ) -> Optional[pd.DataFrame]:
-        """Adapter for StrategyEngine: Returns clean, standardized DataFrame."""
+        """Adapter for StrategyEngine and LiveFetcher: Returns clean, standardized DataFrame."""
         candles = await self.get_candles(
             symbol=symbol, period_sec=period_sec, count=count
         )
@@ -213,16 +217,18 @@ class PocketOptionDataFeed:
         if df.empty:
             return None
 
-        # Standardize column casing
+        # Standardize column casing to lowercase
         df.columns = [str(col).lower() for col in df.columns]
 
-        # Fix #2: Dynamic timestamp unit detection (Milliseconds vs Seconds)
-        if "time" in df.columns and not df["time"].empty:
+        # Fix #4: Standardize timestamp key & dynamic unit detection
+        ts_col = next((c for c in ["time", "timestamp", "t"] if c in df.columns), None)
+        if ts_col:
             try:
-                first_ts = float(df["time"].iloc[0])
-                # Milliseconds are 13 digits (> 10^11) vs 10 digits for seconds
+                first_ts = float(df[ts_col].iloc[0])
                 unit = "ms" if first_ts > 1e11 else "s"
-                df["time"] = pd.to_datetime(df["time"], unit=unit, errors="coerce")
+                df["timestamp"] = pd.to_datetime(df[ts_col], unit=unit, errors="coerce")
+                if ts_col != "timestamp":
+                    df = df.drop(columns=[ts_col])
             except Exception as ts_err:
                 logger.debug(f"[TIMESTAMP CONVERT WARNING] {ts_err}")
 
@@ -238,10 +244,16 @@ class PocketOptionDataFeed:
         return pairs
 
 
+# Fix #1: Class Alias for Backward Compatibility
+PocketOptionDataFeed = PocketOptionFeed
+
+
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
     async def test_pocket_feed():
-        print("--- Testing Refined 10/10 Pocket Option Data Feed ---")
-        feed = PocketOptionDataFeed(allow_otc=True)
+        print("--- Testing Production Pocket Option Data Feed ---")
+        feed = PocketOptionFeed(allow_otc=True)
 
         connected = await feed.connect()
         print(f"Connection Status: {connected}")
