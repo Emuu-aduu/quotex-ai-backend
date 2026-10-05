@@ -148,7 +148,7 @@ def main_ui(page: ft.Page):
 
     def build_signal_card(sig: dict):
         is_buy = sig.get("action") == "BUY"
-        color = ft.colors.GREEN_400 if is_buy else ft.colors.RED_400
+        color = ft.Colors.GREEN_400 if is_buy else ft.Colors.RED_400
         return ft.Card(
             content=ft.Container(
                 padding=15,
@@ -157,7 +157,7 @@ def main_ui(page: ft.Page):
                     controls=[
                         ft.Column([
                             ft.Text(f"{sig.get('symbol')} ({sig.get('timeframe')})", size=16, weight=ft.FontWeight.BOLD),
-                            ft.Text(f"Time: {sig.get('timestamp')}", size=12, color=ft.colors.GREY_400),
+                            ft.Text(f"Time: {sig.get('timestamp')}", size=12, color=ft.Colors.GREY_400),
                         ]),
                         ft.Text(f"{sig.get('action')}", size=18, weight=ft.FontWeight.BOLD, color=color),
                         ft.Text(f"Price: {sig.get('price')}", size=16, weight=ft.FontWeight.W_500),
@@ -187,15 +187,15 @@ def main_ui(page: ft.Page):
 
     page.add(
         ft.Row([
-            ft.Text("TradingView Live Signal Engine", size=22, weight=ft.FontWeight.BOLD, color=ft.colors.BLUE_400),
+            ft.Text("TradingView Live Signal Engine", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400),
             ft.Container(
-                content=ft.Text("ONLINE", size=12, color=ft.colors.GREEN_400, weight=ft.FontWeight.BOLD),
-                border=ft.border.all(1, ft.colors.GREEN_400),
+                content=ft.Text("ONLINE", size=12, color=ft.Colors.GREEN_400, weight=ft.FontWeight.BOLD),
+                border=ft.border.all(1, ft.Colors.GREEN_400),
                 border_radius=5,
                 padding=5
             )
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-        ft.Divider(height=1, color=ft.colors.GREY_800),
+        ft.Divider(height=1, color=ft.Colors.GREY_800),
         ft.Container(content=signals_list, expand=True)
     )
 
