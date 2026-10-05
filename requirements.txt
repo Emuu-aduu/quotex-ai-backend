@@ -5,3 +5,4 @@ requests
 pydantic
 pydantic-settings
 flet
+flet-web
