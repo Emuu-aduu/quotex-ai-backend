@@ -1,9 +1,6 @@
-ENV=development
-HOST=0.0.0.0
-PORT=8000
-WEBHOOK_SECRET=your_super_secret_webhook_key_123
-DEFAULT_TIMEFRAME=1m
-MIN_STABILITY_SCORE=0.60
-CONFIDENCE_THRESHOLD=0.75
-MAX_DAILY_SIGNALS=50
-ALLOW_OTC=true
+fastapi
+uvicorn
+duckdb
+requests
+pydantic
+pydantic-settings
