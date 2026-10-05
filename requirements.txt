@@ -4,3 +4,4 @@ duckdb
 requests
 pydantic
 pydantic-settings
+flet
