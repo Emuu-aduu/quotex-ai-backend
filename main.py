@@ -190,7 +190,7 @@ def main_ui(page: ft.Page):
             ft.Text("TradingView Live Signal Engine", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400),
             ft.Container(
                 content=ft.Text("ONLINE", size=12, color=ft.Colors.GREEN_400, weight=ft.FontWeight.BOLD),
-                border=ft.border.all(1, ft.Colors.GREEN_400),  # Corrected to lowercase ft.border.all (or ft.Border.all depending on version, handled via compatibility style)
+                bgcolor=ft.Colors.GREY_900,
                 border_radius=5,
                 padding=5
             )
