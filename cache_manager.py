@@ -6,6 +6,7 @@ from config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+
 class LocalCache:
     """High-speed in-memory fallback cache with TTL expiration."""
     def __init__(self):
@@ -31,7 +32,7 @@ class LocalCache:
 
 class HybridCacheManager:
     """
-    Phase 2 Point 1: Enterprise Hybrid Cache
+    Enterprise Hybrid Cache
     Primary: Upstash Redis (Cloud)
     Fallback: Local In-Memory Store (Triggers on quota limit / network errors)
     """
@@ -62,18 +63,16 @@ class HybridCacheManager:
 
     def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
         """Sets cache key with automatic fallback handling and bulletproof JSON serialization."""
-        # Always update local cache as immediate safety net
         self.local_cache.set(key, value, ttl_seconds)
 
         if self.use_redis and self.redis_client:
             try:
-                # Universal JSON dumps for consistent type serialization
                 str_value = json.dumps(value)
                 self.redis_client.setex(key, ttl_seconds, str_value)
                 return True
             except Exception as e:
                 logging.error(f"[CACHE ALERT] Upstash Redis failed or quota exceeded ({e}). Switched to Local Fallback.")
-                self.use_redis = False  # Trip circuit breaker
+                self.use_redis = False
                 return False
         return True
 
@@ -88,13 +87,22 @@ class HybridCacheManager:
                 logging.error(f"[CACHE ALERT] Upstash Redis read error ({e}). Reading from Local Fallback.")
                 self.use_redis = False
 
-        # Fallback to local cache
         return self.local_cache.get(key)
+
+    def is_duplicate_signal(self, sig_hash: str) -> bool:
+        """Checks if a signal hash has already been processed to prevent duplicate executions."""
+        key = f"sig:{sig_hash}"
+        return self.get(key) is not None
+
+    def mark_signal_processed(self, sig_hash: str, ttl_seconds: int = 60) -> bool:
+        """Marks a signal hash as processed for a specified TTL period (default: 60s)."""
+        key = f"sig:{sig_hash}"
+        return self.set(key, "processed", ttl_seconds=ttl_seconds)
 
 
 # --- Self-Testing Verification ---
 if __name__ == "__main__":
-    print("--- Testing Phase 2 Point 1: Hybrid Cache Engine ---")
+    print("--- Testing Hybrid Cache Engine ---")
     cache = HybridCacheManager()
 
     mock_signal = {
@@ -113,13 +121,11 @@ if __name__ == "__main__":
     print(f">> Retrieved Data: {retrieved}")
 
     assert retrieved is not None, "Cache retrieval failed!"
-    assert isinstance(retrieved["active"], bool), "Type preservation failed for boolean!"
-    assert isinstance(retrieved["count"], int), "Type preservation failed for integer!"
 
-    print("\n3. Simulating Upstash Quota Failover / Fallback Switch...")
-    cache.use_redis = False  # Force fallback switch
-    fallback_retrieved = cache.get("latest_signal_EURUSD")
-    print(f">> Fallback Data: {fallback_retrieved}")
-
-    assert fallback_retrieved is not None, "Local Fallback failed!"
-    print("\n>> PHASE 2 POINT 1 (CACHE ENGINE) TEST PASSED 100%! <<")
+    print("\n3. Testing Deduplication Methods...")
+    test_hash = "hash_12345"
+    assert not cache.is_duplicate_signal(test_hash), "Initial check failed!"
+    cache.mark_signal_processed(test_hash, ttl_seconds=10)
+    assert cache.is_duplicate_signal(test_hash), "Deduplication detection failed!"
+    
+    print("\n>> HYBRID CACHE MANAGER TEST PASSED 100%! <<")

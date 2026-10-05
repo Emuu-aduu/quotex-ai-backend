@@ -1,6 +1,10 @@
 # Environment variables / Secrets
 .env
 
+# Database Files
+*.duckdb
+*.db
+
 # Python Virtual Environment
 venv/
 env/

@@ -1,175 +1,104 @@
-import time
-import json
-import threading
+import os
+import sys
+import unittest
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S"
-)
+# Suppress noisy logs during unittest execution
+logging.basicConfig(level=logging.ERROR)
 
-def test_1_config():
-    logging.info("1. Testing Config & Whitelist System...")
+# ---------------------------------------------------------
+# Defensive Module Imports with Clear Diagnostics
+# ---------------------------------------------------------
+try:
     from config import settings
-    assert hasattr(settings, "BINANCE_BASE_WS_URL"), "BINANCE_BASE_WS_URL missing!"
-    assert settings.is_approved_live_pair("EUR/USD") == True, "EUR/USD should be approved!"
-    assert settings.is_approved_live_pair("EURUSD_OTC") == False, "OTC pair must be rejected!"
-    logging.info("[PASS] Config & Whitelist guards functional.")
-
-def test_2_zmq_bus():
-    logging.info("2. Testing ZeroMQ Messaging Bus...")
-    from zmq_bus import ZMQPublisher, ZMQSubscriber
-    pub = ZMQPublisher(port=5556)
-    sub = ZMQSubscriber(port=5556, topic="TICK")
-    time.sleep(0.2)
-    
-    test_msg = {"symbol": "EURUSD", "price": 1.0850, "timestamp": time.time()}
-    pub.publish_tick("TICK", test_msg)
-    recv_msg = sub.receive_tick()
-    
-    pub.close()
-    sub.close()
-    assert recv_msg is not None and recv_msg["symbol"] == "EURUSD", "ZMQ message delivery failed!"
-    logging.info("[PASS] ZeroMQ Pub/Sub pipeline verified.")
-
-def test_3_quotex_guards():
-    logging.info("3. Testing Quotex Protection Guards...")
-    from quotex_feed import QuotexDataFeed
-    feed = QuotexDataFeed()
-    
-    class MockWS:
-        def __init__(self): self.closed = False
-        def close(self): self.closed = True
-            
-    mock_ws = MockWS()
-    assert feed._validate_and_process_payload(mock_ws, "EURUSD_OTC", 1.0850, time.time()) == False
-    logging.info("[PASS] Quotex Disconnect guards verified.")
-
-def test_4_binance_live():
-    logging.info("4. Testing Binance Backup Stream...")
-    from binance_backup import BinanceBackupFeed
-    feed = BinanceBackupFeed()
-    received_ticks = []
-    
-    orig_on_message = feed._on_message
-    def custom_on_message(ws, message):
-        orig_on_message(ws, message)
-        try:
-            data = json.loads(message)
-            if float(data.get("p", 0.0)) > 0: received_ticks.append(data)
-        except Exception: pass
-            
-    feed._on_message = custom_on_message
-    t = threading.Thread(target=feed.start, daemon=True)
-    t.start()
-    time.sleep(2)
-    feed.is_running = False
-    if feed.ws: feed.ws.close()
-        
-    assert len(received_ticks) > 0, "No live ticks from Binance!"
-    logging.info(f"[PASS] Binance Stream verified ({len(received_ticks)} ticks received).")
-
-def test_5_hybrid_cache():
-    logging.info("5. Testing Hybrid Cache Manager...")
-    from cache_manager import HybridCacheManager
-    cache = HybridCacheManager()
-    
-    test_data = {"symbol": "EURUSD", "action": "BUY", "price": 1.0854, "active": True}
-    cache.set("test_key", test_data, ttl_seconds=10)
-    res = cache.get("test_key")
-    
-    assert res is not None and res["active"] == True, "Cache retrieval failed!"
-    logging.info("[PASS] Hybrid Cache Engine verified.")
-
-def test_6_fcm_broadcaster():
-    logging.info("6. Testing FCM Notification Broadcaster...")
-    from fcm_delivery import FCMPushBroadcaster
-    fcm = FCMPushBroadcaster()
-    
-    signal = {"symbol": "EURUSD", "action": "SELL", "price": 1.0840, "timestamp": "NOW"}
-    status = fcm.send_signal_notification(signal)
-    
-    assert status == True, "FCM Push notification test failed!"
-    logging.info("[PASS] FCM Notification Engine verified.")
-
-def test_7_duckdb_storage():
-    logging.info("7. Testing DuckDB Core Storage Engine...")
     from db_store import DuckDBStorageEngine
-    db = DuckDBStorageEngine("master_test.duckdb")
-    
-    mock_tick = {"symbol": "GBPUSD", "price": 1.2650, "timestamp": time.time(), "source": "TEST"}
-    db.insert_tick(mock_tick)
-    ticks = db.get_recent_ticks("GBPUSD", limit=1)
-    db.close()
-    
-    assert len(ticks) > 0 and ticks[0]["symbol"] == "GBPUSD", "DuckDB store/query failed!"
-    logging.info("[PASS] DuckDB Core Storage Engine verified.")
+    from cache_manager import HybridCacheManager
+except ImportError as err:
+    print(f"\n[CRITICAL ERROR] Missing required project module: {err}")
+    print("Ensure 'config.py', 'db_store.py', and 'cache_manager.py' are present in the working directory before running tests.\n")
+    sys.exit(1)
 
-def test_8_mlops_db():
-    logging.info("8. Testing DuckDB MLOps Feature Store...")
-    from mlops_db import DuckDBMLOpsEngine
-    db = DuckDBMLOpsEngine("master_mlops_test.duckdb")
-    
-    mock_feature = {
-        "symbol": "EURUSD", "timestamp": time.time(),
-        "open": 1.0850, "high": 1.0860, "low": 1.0845, "close": 1.0855,
-        "rsi_14": 58.4, "ema_9": 1.0852, "ema_21": 1.0848
-    }
-    db.log_features(mock_feature)
-    records = db.get_latest_features("EURUSD", limit=1)
-    db.close()
-    
-    assert len(records) > 0 and records[0]["symbol"] == "EURUSD", "MLOps Feature Store test failed!"
-    logging.info("[PASS] DuckDB MLOps Feature Store verified.")
 
-def test_9_mlflow_pipeline():
-    logging.info("9. Testing Standalone MLOps Workflow Pipeline...")
-    from mlops_db import DuckDBMLOpsEngine
-    from mlflow_tracker import StandaloneMLflowTracker, StandaloneWorkflowExecutor
-    
-    db = DuckDBMLOpsEngine("master_mlops_test.duckdb")
-    tracker = StandaloneMLflowTracker("./master_mlruns")
-    executor = StandaloneWorkflowExecutor(db, tracker)
-    
-    success = executor.execute_pipeline("EURUSD")
-    db.close()
-    
-    assert success == True, "Standalone MLOps Workflow pipeline failed!"
-    logging.info("[PASS] Standalone MLOps Workflow Pipeline verified.")
+class TestSignalEngineCore(unittest.TestCase):
+    """Automated Unit & Integration Test Suite for TradingView Signal Engine."""
 
-def run_all_tests():
-    print("\n==================================================")
-    print("    MASTER INTEGRATION TEST SUITE (PHASES 1 - 3)  ")
-    print("==================================================")
-    
-    tests = [
-        ("Config Whitelist", test_1_config),
-        ("ZeroMQ Bus Engine", test_2_zmq_bus),
-        ("Quotex Guards", test_3_quotex_guards),
-        ("Binance Live Feed", test_4_binance_live),
-        ("Hybrid Cache", test_5_hybrid_cache),
-        ("FCM Broadcaster", test_6_fcm_broadcaster),
-        ("DuckDB Core Storage", test_7_duckdb_storage),
-        ("DuckDB MLOps Feature Store", test_8_mlops_db),
-        ("Standalone MLOps Pipeline", test_9_mlflow_pipeline)
-    ]
-    
-    passed_count = 0
-    for name, test_func in tests:
+    def setUp(self):
+        """Test setup for isolated database and cache instances."""
+        self.test_db_path = "test_run_temp.duckdb"
+        self.db = DuckDBStorageEngine(self.test_db_path)
+        self.cache = HybridCacheManager()
+
+    def tearDown(self):
+        """Robust cleanup using try/finally block to guarantee temporary file removal."""
         try:
-            test_func()
-            passed_count += 1
-        except Exception as e:
-            logging.error(f"[FAIL] {name} test failed: {e}")
-            
-    print("\n==================================================")
-    print(f"       SUMMARY: {passed_count}/{len(tests)} TESTS PASSED")
-    if passed_count == len(tests):
-        print("   STATUS: SYSTEM IS 100% HEALTHY & READY!")
-    else:
-        print("   STATUS: ISSUES DETECTED - PLEASE REVIEW LOGS")
-    print("==================================================\n")
+            if hasattr(self, 'db') and self.db:
+                self.db.close()
+        except Exception as close_err:
+            logging.error(f"Error while closing DuckDB test instance: {close_err}")
+        finally:
+            if os.path.exists(self.test_db_path):
+                try:
+                    os.remove(self.test_db_path)
+                except Exception as remove_err:
+                    logging.warning(f"Could not remove temporary test DB file: {remove_err}")
+
+    # 1. Config Loading Test
+    def test_01_config_loading(self):
+        self.assertIsNotNone(settings.WEBHOOK_SECRET)
+        self.assertGreater(settings.PORT, 0)
+        self.assertIn(settings.ENV, ["development", "production", "testing"])
+
+    # 2. DuckDB Engine Operations Test
+    def test_02_duckdb_storage_operations(self):
+        sample_signal = {
+            "signal_id": "TEST_SIG_001",
+            "symbol": "EURUSD",
+            "action": "BUY",
+            "timeframe": "1m",
+            "price": 1.0850,
+            "timestamp": "2026-10-02T10:00:00Z"
+        }
+        
+        # Save Signal
+        save_success = self.db.save_signal(sample_signal)
+        self.assertTrue(save_success)
+
+        # Retrieve Signal History
+        history = self.db.get_recent_signals(limit=5)
+        self.assertGreaterEqual(len(history), 1)
+        self.assertEqual(history[0]["symbol"], "EURUSD")
+
+    # 3. Hybrid Cache Manager Test
+    def test_03_cache_set_get(self):
+        key = "test_indicator_ma"
+        val = {"sma_20": 1.0845, "status": "bullish"}
+        
+        # Set Cache
+        self.cache.set(key, val, ttl_seconds=10)
+        
+        # Get Cache
+        retrieved = self.cache.get(key)
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved.get("status"), "bullish")
+
+    # 4. Signal Deduplication Check
+    def test_04_signal_deduplication(self):
+        sig_hash = "hash_eurusd_buy_1m_1000"
+        
+        # First check (Should be False / Not duplicate)
+        is_dup_1 = self.cache.is_duplicate_signal(sig_hash)
+        self.assertFalse(is_dup_1)
+
+        # Mark as processed
+        self.cache.mark_signal_processed(sig_hash, ttl_seconds=60)
+
+        # Second check (Should be True / Duplicate)
+        is_dup_2 = self.cache.is_duplicate_signal(sig_hash)
+        self.assertTrue(is_dup_2)
+
 
 if __name__ == "__main__":
-    run_all_tests()
+    print("\n" + "=" * 60)
+    print("       RUNNING TRADINGVIEW SIGNAL BOT TEST SUITE")
+    print("=" * 60)
+    unittest.main(verbosity=2)
